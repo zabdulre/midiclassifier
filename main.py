@@ -9,18 +9,39 @@ import music21
 # pass it to sci kit learn
 
 Labels = {"romantic": 1, "baroque": 2, "classical": 3, "modern": 4}
+loadedData = []  # List of examples (vectors) for each era of music, each example is a dictionary {Label : feature vector}
+labelsToLoad = []
+filesToLoad = []
 
+#TODO
+def getFeaturesFromMIDIObject(midiObject):
+    features = []
+    return features
 
-def getFeatures(filePath):
+def updateLoadedData(pos, length, out, result):
+    if out is not None:
+        print("Parsed file number ", pos + 1, " ", result)
+        #if len(labelsToLoad) > pos: #only add to the back of the list, prevents duplicates
+        if pos < len(loadedData):
+            loadedData.append([labelsToLoad[pos], getFeaturesFromMIDIObject(out)])
+    return
+
+def tryToParse(filePath):
+    try:
+        return music21.converter.parse(filePath)
+    except:
+        print(filePath, "could not be parsed, skipping...")
+        return None
+
+def getFeatures():
     # use music21 to open the file
-    file = music21.midi.MidiFile()
-    file.open(filePath)
-    file.read()
-    file.close()
-    print(file.tracks)
+    music21.common.runParallel(filesToLoad, tryToParse, updateMultiply=1, updateFunction=updateLoadedData, updateSendsIterable=True)
+    #file = music21.converter.parse(filePath)
+    #print(file.flat.keySignature.asKey())
     # get a vector for each feature we want to add
     # append those vectors together into one giant vector
-    return []
+    print("Done!")
+    return loadedData
 
 
 def getClassDirectories(argv):
@@ -35,13 +56,19 @@ def getClassDirectories(argv):
 def main(argv):
     directories = getClassDirectories(argv)
 
-    loadedData = []  # List of examples (vectors) for each era of music, each example is a dictionary {Label : feature vector}
+
     for folder in directories.items():
         currentLabel = Labels[folder[0]]
         for fileName in os.listdir(folder[1]):
+            if fileName[0] == '.':  # skip any hidden files
+                continue
             currentFileDirectory = folder[1] + "/" + fileName
-            currentFeatures = getFeatures(currentFileDirectory)
-            loadedData.append({currentLabel: currentFeatures})
+            filesToLoad.append(currentFileDirectory)
+            labelsToLoad.append(currentLabel)
+            #currentFeatures = getFeatures(currentFileDirectory)
+            #loadedData.append({currentLabel: currentFeatures})
+
+    loadedData = getFeatures()
 
     return
 
