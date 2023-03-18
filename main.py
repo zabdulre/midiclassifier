@@ -1,6 +1,7 @@
 import argparse
 import os
 import music21
+from music21 import analysis
 
 # read the files in to midi objects
 # send the object into a processing function
@@ -13,34 +14,54 @@ loadedData = []  # List of examples (vectors) for each era of music, each exampl
 labelsToLoad = []
 filesToLoad = []
 
-count=0
+#Number of valid files that had errors when analyzing/extracting features (note: does not account for files that were unable to be parsed in the first place)
+badfilecount=0
 
 #List of all key signatures
 ksList = []
-for a in ["C","D","E", "F", "G", "A", "B"]:
+for a in ["c","d","e", "f", "g", "a", "b"]:
     for b in ["","-"]:
         for c in [" major", " minor"]:
             ksList.append(a+b+c)
 
 #TODO
 def getFeaturesFromMIDIObject(midiObject):
+    badfileflag = 0
     features = []
 
     #Get Enumerated Key Signature
+    #Can't seem to find "analyze" function
+    #https://www.kaggle.com/code/wfaria/midi-music-data-extraction-using-music21
     try:
-        ks = midiObject.flat.keySignature.asKey()
-        ksIndex = ksList.index(str(ks))
+        ks = midiObject.analyze('key')
+        ksIndex = ksList.index(str(ks).lower())
         print(ks, ksIndex)
         features.append(ksIndex)
     except Exception as e:
         print(e)
-        global count
-        count +=1
-        print("does not have keysig? Total bad files:", count)
+        badfileflag+=1
         features.append(-1)
 
-    #Get 
+    #Get min and max pitch (allegedly)
+    #https://web.mit.edu/music21/doc/moduleReference/moduleAnalysisDiscrete.html
+    try:
+        p = analysis.discrete.Ambitus()
+        pitchMin, pitchMax = p.getPitchSpan(midiObject)
+        print(pitchMin.ps, pitchMax.ps)
+        features.append(pitchMin.ps)
+        features.append(pitchMax.ps)
+    except Exception as e:
+        print(e)
+        badfileflag+=1
+        features.append(-1)
+        features.append(-1)
 
+    if(badfileflag!=0):
+        global badfilecount
+        badfilecount +=1
+        print(badfileflag, "errors when parsing features") 
+    
+    print(features)
     return features
 
 def updateLoadedData(pos, length, out, result):
@@ -65,8 +86,8 @@ def getFeatures():
     #print(file.flat.keySignature.asKey())
     # get a vector for each feature we want to add
     # append those vectors together into one giant vector
-    global count
-    print("total bad files: ", count)
+    global badfilecount
+    print("total bad files: ", badfilecount)
     print("Done!")
     return loadedData
 
@@ -87,8 +108,8 @@ def main(argv):
     for folder in directories.items():
 
         #Debug: only run on one folder
-        #if(folder[0]!="classical"):
-        #    continue
+        if(folder[0]!="classical"):
+            continue
 
         currentLabel = Labels[folder[0]]
         for fileName in os.listdir(folder[1]):
