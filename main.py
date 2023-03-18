@@ -13,16 +13,41 @@ loadedData = []  # List of examples (vectors) for each era of music, each exampl
 labelsToLoad = []
 filesToLoad = []
 
+count=0
+
+#List of all key signatures
+ksList = []
+for a in ["C","D","E", "F", "G", "A", "B"]:
+    for b in ["","-"]:
+        for c in [" major", " minor"]:
+            ksList.append(a+b+c)
+
 #TODO
 def getFeaturesFromMIDIObject(midiObject):
     features = []
+
+    #Get Enumerated Key Signature
+    try:
+        ks = midiObject.flat.keySignature.asKey()
+        ksIndex = ksList.index(str(ks))
+        print(ks, ksIndex)
+        features.append(ksIndex)
+    except Exception as e:
+        print(e)
+        global count
+        count +=1
+        print("does not have keysig? Total bad files:", count)
+        features.append(-1)
+
+    #Get 
+
     return features
 
 def updateLoadedData(pos, length, out, result):
     if out is not None:
         print("Parsed file number ", pos + 1, " ", result)
         #if len(labelsToLoad) > pos: #only add to the back of the list, prevents duplicates
-        if pos < len(loadedData):
+        if pos == len(loadedData):
             loadedData.append([labelsToLoad[pos], getFeaturesFromMIDIObject(out)])
     return
 
@@ -40,6 +65,8 @@ def getFeatures():
     #print(file.flat.keySignature.asKey())
     # get a vector for each feature we want to add
     # append those vectors together into one giant vector
+    global count
+    print("total bad files: ", count)
     print("Done!")
     return loadedData
 
@@ -58,6 +85,11 @@ def main(argv):
 
 
     for folder in directories.items():
+
+        #Debug: only run on one folder
+        #if(folder[0]!="classical"):
+        #    continue
+
         currentLabel = Labels[folder[0]]
         for fileName in os.listdir(folder[1]):
             if fileName[0] == '.':  # skip any hidden files
