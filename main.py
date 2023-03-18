@@ -1,7 +1,9 @@
 import argparse
 import os
 import music21
+import numpy as np
 from music21 import analysis
+from music21 import pitch
 
 # read the files in to midi objects
 # send the object into a processing function
@@ -20,7 +22,7 @@ badfilecount=0
 #List of all key signatures
 ksList = []
 for a in ["c","d","e", "f", "g", "a", "b"]:
-    for b in ["","-"]:
+    for b in ["","#","-"]:
         for c in [" major", " minor"]:
             ksList.append(a+b+c)
 
@@ -30,12 +32,17 @@ def getFeaturesFromMIDIObject(midiObject):
     features = []
 
     #Get Enumerated Key Signature
-    #Can't seem to find "analyze" function
     #https://www.kaggle.com/code/wfaria/midi-music-data-extraction-using-music21
+    #https://web.mit.edu/music21/doc/moduleReference/moduleKey.html
+    #Analyze function documentation:
+    #https://web.mit.edu/music21/doc/moduleReference/moduleStreamBase.html
     try:
         ks = midiObject.analyze('key')
+        #Either use enumerated for every single key signature
         ksIndex = ksList.index(str(ks).lower())
-        print(ks, ksIndex)
+        #Or use number of sharps/flats (however, not too much relation between similar valued ks, and no way to do exception value?
+        #ksIndex = ks.sharps
+        #print(ks, '(',ksIndex,')')
         features.append(ksIndex)
     except Exception as e:
         print(e)
@@ -47,7 +54,7 @@ def getFeaturesFromMIDIObject(midiObject):
     try:
         p = analysis.discrete.Ambitus()
         pitchMin, pitchMax = p.getPitchSpan(midiObject)
-        print(pitchMin.ps, pitchMax.ps)
+        #print(pitchMin.ps, pitchMax.ps)
         features.append(pitchMin.ps)
         features.append(pitchMax.ps)
     except Exception as e:
@@ -56,11 +63,65 @@ def getFeaturesFromMIDIObject(midiObject):
         features.append(-1)
         features.append(-1)
 
+
+    #Get most common pitch (not considering octaves?, so pitchClass)
+    #https://web.mit.edu/music21/doc/moduleReference/moduleAnalysisPitchAnalysis.html
+    #https://web.mit.edu/music21/doc/moduleReference/modulePitch.html
+    try:
+        pitchClassCount = analysis.pitchAnalysis.pitchAttributeCount(midiObject, 'pitchClass')
+        for n, count in pitchClassCount.most_common(3):
+            #print("%2s: %d" % (pitch.Pitch(n), pitchClassCount[n]))
+            features.append(n)
+    except Exception as e:
+        print(e)
+        badfileflag+=1
+        for n in range(3):
+            features.append(-1)
+
+    #For pitch, split into lower half and upper half, to simulate Left Hand/Right Hand
+    try:
+        psCount = analysis.pitchAnalysis.pitchAttributeCount(midiObject, 'ps')
+        psList = sorted(psCount.elements())
+        psLeft = psList[:len(psList)//2]
+        psRight = psList[len(psList)//2:]
+
+        #Get average pitch for each half
+        apLeft = np.mean(psLeft)
+        apRight = np.mean(psRight)
+        #print(apLeft, apRight)
+        features.append(apLeft)
+        features.append(apRight)
+        #Get standard deviation for each half
+        sdpLeft = np.std(psLeft)
+        sdpRight = np.std(psRight)
+        #print(sdpLeft, sdpRight)
+        features.append(sdpLeft)
+        features.append(sdpRight)
+    except Exception as e:
+        print(e)
+        badfileflag+=1
+        for n in range(4):
+            features.append(-1)
+
+    #Other features to add: chords, intervals, tempo of song
+
+
+    #When moving to from baseline to LSTM/Transformer: do this for every couple measures? 
+    #How do we try analyzing sequence of smaller sections instead of just collecting overall statistics?
+    #Maybe try to translate/convert/transform each 2-3 measures into a d-dimensional "word"?
+    
+    #If there were any errors, make note of parsing problem
     if(badfileflag!=0):
         global badfilecount
         badfilecount +=1
         print(badfileflag, "errors when parsing features") 
     
+    #Print and return features
+    #Feature 1: enumerated key signature (categorical)
+    #Features 2,3: max and min pitch. (numerical, discrete)
+    #Features 4-6: "enumerated" 3 most common notes (not considering octave, so just note name) (categorical? discrete)
+    #Features 7-8: Avg mean of upper half and lower half of notes (to simulate LH RH) (continuous)
+    #Features 9-10: Std dev of upper half and lower half of notes (continuous)
     print(features)
     return features
 
@@ -68,7 +129,7 @@ def updateLoadedData(pos, length, out, result):
     if out is not None:
         print("Parsed file number ", pos + 1, " ", result)
         #if len(labelsToLoad) > pos: #only add to the back of the list, prevents duplicates
-        if pos == len(loadedData):
+        if pos >= len(loadedData):
             loadedData.append([labelsToLoad[pos], getFeaturesFromMIDIObject(out)])
     return
 
