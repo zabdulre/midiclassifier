@@ -1,15 +1,20 @@
 import argparse
 import os
 import music21
-
+from sklearn import model_selection, naive_bayes, metrics
+from collections import Counter
+import matplotlib.pyplot as plt
+from joblib import dump, load
+import numpy as np
 # read the files in to midi objects
 # send the object into a processing function
 # the processing function creates one vector per object
 # get the vector from the processing function, and put the correct label
 # pass it to sci kit learn
 
-Labels = {"romantic": 1, "baroque": 2, "classical": 3, "modern": 4}
+Labels = {"romantic": 1, "modern": 2, "classical": 3, "baroque": 4}
 loadedData = []  # List of examples (vectors) for each era of music, each example is a dictionary {Label : feature vector}
+loadedLabels = []
 labelsToLoad = []
 filesToLoad = []
 
@@ -45,10 +50,11 @@ def getFeaturesFromMIDIObject(midiObject):
 
 def updateLoadedData(pos, length, out, result):
     if out is not None:
-        print("Parsed file number ", pos + 1, " ", result)
         #if len(labelsToLoad) > pos: #only add to the back of the list, prevents duplicates
-        if pos == len(loadedData):
-            loadedData.append([labelsToLoad[pos], getFeaturesFromMIDIObject(out)])
+        if pos >= len(loadedData):
+            print("Parsed file number ", pos + 1, " ", result)
+            loadedData.append(getFeaturesFromMIDIObject(out))
+            loadedLabels.append(labelsToLoad[pos])
     return
 
 def tryToParse(filePath):
@@ -68,21 +74,28 @@ def getFeatures():
     global count
     print("total bad files: ", count)
     print("Done!")
-    return loadedData
+    return loadedData.copy(), loadedLabels.copy()
 
 
-def getClassDirectories(argv):
+def getClassDirectories(rootdir, argv):
     """
+    @param rootdir: which directory to look for the era folders in
     @param argv: Contains the datadir and the name of each folder in the datadir. Each folder corresponds to an era of music.
     @return: A dictionary of directories. Each directory corresponds to a genre of music. Inside the directory should be MIDI files.
     """
-    return {"romantic": argv.datadir + "/" + argv.romantic, "baroque": argv.datadir + "/" + argv.baroque,
-            "classical": argv.datadir + "/" + argv.classical, "modern": argv.datadir + "/" + argv.modern}
+    return {"romantic": rootdir + "/" + argv.romantic, "baroque": rootdir + "/" + argv.baroque,
+            "classical": rootdir + "/" + argv.classical, "modern": rootdir + "/" + argv.modern}
 
 
-def main(argv):
-    directories = getClassDirectories(argv)
-
+def loadMIDIs(directories):
+    """
+    @param directories: a list of all directories to extract midis from (subfolders must be a valid era name)
+    @return X, Y: features and labels respectively for the MIDI files
+    """
+    labelsToLoad.clear()
+    loadedData.clear()
+    loadedLabels.clear()
+    filesToLoad.clear()
 
     for folder in directories.items():
 
@@ -97,10 +110,34 @@ def main(argv):
             currentFileDirectory = folder[1] + "/" + fileName
             filesToLoad.append(currentFileDirectory)
             labelsToLoad.append(currentLabel)
-            #currentFeatures = getFeatures(currentFileDirectory)
-            #loadedData.append({currentLabel: currentFeatures})
 
-    loadedData = getFeatures()
+    X, Y = getFeatures()
+    return X, Y
+
+def printDatasetMetrics(X, Y, title="Training Dataset"):
+    """
+    @param X: list of feature vectors
+    @param Y: list of corresponding label vectors
+    """
+    if X is not None:
+        pass #print feature related metrics here
+    if Y is not None:
+        f, aa = plt.subplots()
+        plt.title("Label Distribution for ", title)
+        aa.pie(Counter(Y).values(), labels=list(Labels.keys())[:2], autopct='%1.0f%%') #change the labels according to if the dataset has all eras or not TODO
+        plt.show()
+        pass #print label related metrics here
+    if X is not None and Y is not None:
+        pass #print metrics related to both here
+
+def main(argv):
+    trainDirectories = getClassDirectories(argv.datadir, argv)
+    X, Y = loadMIDIs(trainDirectories)
+    printDatasetMetrics(X, Y)
+    X_train, X_test, Y_train, Y_test = model_selection.train_test_split(X, Y, test_size=0.25) #can replace this by loading the test set instead
+    nb = naive_bayes.GaussianNB()
+    nb.fit(X_train, Y_train)
+    print(metrics.classification_report(Y_test, nb.predict(X_test)))
 
     return
 
