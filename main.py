@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from joblib import dump, load
 import numpy as np
 from music21 import analysis
-
+import torch
 # read the files in to midi objects
 # send the object into a processing function
 # the processing function creates one vector per object
@@ -122,7 +122,7 @@ def loadMIDIs(directories):
     for folder in directories.items():
 
         #Debug: only run on one folder
-        if(folder[0]!="classical"):
+        if(folder[0]!="modern"):
             continue
 
         currentLabel = Labels[folder[0]]
@@ -143,24 +143,32 @@ def printDatasetMetrics(X, Y, title="Training Dataset"):
     """
     if X is not None:
         pass #print feature related metrics here
-    if Y is not None:
+    if Y is not None and len(Y) != 0:
         f, aa = plt.subplots()
-        plt.title("Label Distribution for ", title)
-        aa.pie(Counter(Y).values(), labels=list(Labels.keys())[:2], autopct='%1.0f%%') #change the labels according to if the dataset has all eras or not TODO
+        plt.title("Label Distribution for " + title)
+        aa.pie(Counter(Y).values(), labels=list(Labels.keys())[:1], autopct='%1.0f%%') #change the labels according to if the dataset has all eras or not TODO
         plt.show()
         pass #print label related metrics here
     if X is not None and Y is not None:
         pass #print metrics related to both here
+
+
+def doNaiveBayes(X_train, X_test, Y_train, Y_test):
+    nb = naive_bayes.GaussianNB()
+    nb.fit(X_train, Y_train)
+    metrics(nb, X_test, Y_test)
+    print(metrics.classification_report(Y_test, nb.predict(X_test)))
+
+def doMLP(X_train, X_test, Y_train, Y_test):
+
 
 def main(argv):
     trainDirectories = getClassDirectories(argv.datadir, argv)
     X, Y = loadMIDIs(trainDirectories)
     printDatasetMetrics(X, Y)
     X_train, X_test, Y_train, Y_test = model_selection.train_test_split(X, Y, test_size=0.25) #can replace this by loading the test set instead
-    nb = naive_bayes.GaussianNB()
-    nb.fit(X_train, Y_train)
-    print(metrics.classification_report(Y_test, nb.predict(X_test)))
-
+    doNaiveBayes(X_train, X_test, Y_train, Y_test)
+    doMLP(X_train, X_test, Y_train, Y_test)
     return
 
 
