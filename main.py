@@ -2,6 +2,7 @@ import argparse
 import os
 import music21
 import torch
+import pandas as pd
 from sklearn import model_selection, naive_bayes, metrics
 from collections import Counter
 import matplotlib.pyplot as plt
@@ -30,11 +31,11 @@ filesToLoad = []
 badfilecount = 0
 numF = 0
 # List of all key signatures
-ksList = []
-for a in ["c", "d", "e", "f", "g", "a", "b"]:
-    for b in ["", "#", "-"]:
-        for c in [" major", " minor"]:
-            ksList.append(a + b + c)
+# ksList = []
+# for a in ["c", "d", "e", "f", "g", "a", "b"]:
+#     for b in ["", "#", "-"]:
+#         for c in [" major", " minor"]:
+#             ksList.append(a + b + c)
 
 
 # TODO
@@ -42,7 +43,7 @@ def getFeaturesFromMIDIObject(midiObject):
     badfileflag = 0
     features = []
 
-    # Get Enumerated Key Signature
+    # Get Enumerated Key Signature: (NOTE: CHANGED to major/minor, sharpflat/not)
     # https://www.kaggle.com/code/wfaria/midi-music-data-extraction-using-music21
     # https://web.mit.edu/music21/doc/moduleReference/moduleKey.html
     # Analyze function documentation:
@@ -50,14 +51,28 @@ def getFeaturesFromMIDIObject(midiObject):
     try:
         ks = midiObject.analyze('key')
         # Either use enumerated for every single key signature
-        ksIndex = ksList.index(str(ks).lower())
+        # ksIndex = ksList.index(str(ks).lower())
         # Or use number of sharps/flats (however, not too much relation between similar valued ks, and no way to do exception value?
         # ksIndex = ks.sharps
         # print(ks, '(',ksIndex,')')
-        features.append(ksIndex)
+        # features.append(ksIndex)
+
+        # Change: now just have 2 features: boolean for major (1) or minor (0), and boolean for sharp/flat key sig (1) or not (0).
+        ksString = str(ks).lower()
+        if "major" in ksString:
+            features.append(1)
+        else:
+            features.append(0)
+        
+        if ("#" in ksString) or ("-" in ksString):
+            features.append(1)
+        else:
+            features.append(0)
     except Exception as e:
         print(e)
         badfileflag += 1
+        # features.append(-1)
+        features.append(-1)
         features.append(-1)
 
     # Get min and max pitch (allegedly)
@@ -115,6 +130,46 @@ def getFeaturesFromMIDIObject(midiObject):
 
     # Other features to add: chords, intervals, tempo of song
 
+    #Next feature: get rhythm features (average note length, note density, frequency of quarter, eighth, 16th notes)
+    #Adapted from: https://arrow.tudublin.ie/cgi/viewcontent.cgi?article=1143&context=scschcomdis (on how to get all note durations)
+    notesDurList = []
+    try:
+        for n in midiObject.flat.notes:
+            if n.duration.isGrace is False and n.quarterLength != 0:
+                notesDurList.append(float(n.quarterLength))
+        #mean note duration
+        durmean = np.mean(notesDurList)
+        noteDens =  len(notesDurList) / float(midiObject.duration.quarterLength)
+
+        numQuart = 0
+        numEighth = 0
+        numSixteenth = 0
+        numTriplet = 0
+        for n in notesDurList:
+            if n == 1.0:
+                numQuart+=1
+            if n == 0.5:
+                numEighth+=1
+            if n == 0.25:
+                numSixteenth+=1
+            if n > 0.3 and n < 0.35:
+                numTriplet+=1
+
+        features.append(durmean)
+        features.append(noteDens)
+
+        features.append(numQuart/len(notesDurList))
+        features.append(numEighth/len(notesDurList))
+        features.append(numSixteenth/len(notesDurList))
+        features.append(numTriplet/len(notesDurList))
+
+    except Exception as e:
+        print(e)
+        badfileflag += 1
+        for i in range(6):
+            features.append(-1)
+
+
     # When moving to from baseline to LSTM/Transformer: do this for every couple measures?
     # How do we try analyzing sequence of smaller sections instead of just collecting overall statistics?
     # Maybe try to translate/convert/transform each 2-3 measures into a d-dimensional "word"?
@@ -126,11 +181,13 @@ def getFeaturesFromMIDIObject(midiObject):
         print(badfileflag, "errors when parsing features")
 
         # Print and return features
-    # Feature 1: enumerated key signature (categorical)
-    # Features 2,3: max and min pitch. (numerical, discrete)
-    # Features 4-6: "enumerated" 3 most common notes (not considering octave, so just note name) (categorical? discrete)
-    # Features 7-8: Avg mean of upper half and lower half of notes (to simulate LH RH) (continuous)
-    # Features 9-10: Std dev of upper half and lower half of notes (continuous)
+    # Feature 1,2: major/major, keysig is # or - (or not) (boolean)
+    # Features 3,4: max and min pitch. (numerical, discrete)
+    # Features 5-7: "enumerated" 3 most common notes (not considering octave, so just note name) (categorical? discrete)
+    # Features 8-9: Avg mean of upper half and lower half of notes (to simulate LH RH) (continuous)
+    # Features 10-11: Std dev of upper half and lower half of notes (continuous)
+    # Features 12,13: average duration of a note, average number of notes played per quarter note
+    # Features 14-17: relative frequency of quarter, eighth, sixteenth, and triplet notes.
     print(features)
     return features
 
