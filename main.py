@@ -39,7 +39,6 @@ numF = 0
 #             ksList.append(a + b + c)
 
 
-# TODO
 def getFeaturesFromMIDIObject(midiObject):
     badfileflag = 0
     features = []
