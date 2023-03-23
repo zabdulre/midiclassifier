@@ -11,7 +11,7 @@ from music21 import analysis
 from torch import tensor, nn, optim, no_grad, argmax, sum
 from torch.utils.data import DataLoader, dataset
 from music21 import pitch
-from Model import MLPmodel
+from Model import MLPDoubleModel, MLPTripleModel
 from tqdm import tqdm
 
 # read the files in to midi objects
@@ -21,6 +21,7 @@ from tqdm import tqdm
 # pass it to sci kit learn
 
 Labels = {"romantic": 0, "modern": 1, "classical": 2, "baroque": 3}
+Numbers = {0: "romantic", 1: "modern",2: "classical", 3:"baroque"}
 loadedData = []  # List of examples (vectors) for each era of music, each example is a dictionary {Label : feature vector}
 loadedLabels = []
 labelsToLoad = []
@@ -193,7 +194,7 @@ def loadMIDIs(directories):
     for folder in directories.items():
 
         # Debug: only run on one folder
-        #if (folder[0] != "modern"):
+       # if (folder[0] != "modern"):
         #    continue
 
         currentLabel = Labels[folder[0]]
@@ -218,7 +219,7 @@ def printDatasetMetrics(X, Y, title="Training Dataset"):
     if Y is not None and len(Y) != 0:
         f, aa = plt.subplots()
         plt.title("Label Distribution for " + title)
-        aa.pie(Counter(Y).values(), labels=list(Counter(Y).keys()),
+        aa.pie(Counter(Y).values(), labels=[Numbers[i] for i in list(Counter(Y).keys())],
                autopct='%1.0f%%')  # change the labels according to if the dataset has all eras or not TODO
         plt.show()
         pass  # print label related metrics here
@@ -226,17 +227,26 @@ def printDatasetMetrics(X, Y, title="Training Dataset"):
         pass  # print metrics related to both here
 
 
-def doNaiveBayes(X_train, X_test, Y_train, Y_test):
+def doNaiveBayes(X_train, X_dev, X_test, Y_train, Y_dev, Y_test):
     nb = naive_bayes.GaussianNB()
     nb.fit(X_train, Y_train)
-    print(metrics.classification_report(Y_test, nb.predict(X_test)))
+    print("Naive Bayes results on dev set: ")
+    print(metrics.classification_report(Y_dev, nb.predict(X_dev)))
+    if X_test is not None and Y_test is not None:
+        print("Naive Bayes results on test set: ")
+        print(metrics.classification_report(Y_test, nb.predict(X_test)))
 
 
-def mlp_loaders(X_train, X_test, Y_train, Y_test, argv):
+def mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
     trainDataset = dataset.TensorDataset(tensor(X_train,dtype=torch.float32), tensor(Y_train,dtype=torch.float32))
-    testDataset = dataset.TensorDataset(tensor(X_test,dtype=torch.float32), tensor(Y_test,dtype=torch.float32))
-    return DataLoader(trainDataset, argv.batchsize, shuffle=True), DataLoader(testDataset, argv.batchsize,
-                                                                               shuffle=True)
+    devDataset = dataset.TensorDataset(tensor(X_dev,dtype=torch.float32), tensor(Y_dev,dtype=torch.float32))
+    if (X_test is None) or (Y_test is None):
+        return DataLoader(trainDataset, argv.batchsize, shuffle=True), DataLoader(devDataset, argv.batchsize,
+                                                                               shuffle=True), None
+    else:
+        testDataset = dataset.TensorDataset(tensor(X_test, dtype=torch.float32), tensor(Y_test, dtype=torch.float32))
+        return DataLoader(trainDataset, argv.batchsize, shuffle=True), DataLoader(devDataset, argv.batchsize,
+                                                                               shuffle=True), DataLoader(testDataset, argv.batchsize, shuffle=True)
 
 
 def mlp_epoch(model, lossFunction, opt, loader, argv, train=True):
@@ -259,50 +269,135 @@ def mlp_epoch(model, lossFunction, opt, loader, argv, train=True):
     return numCorrect / numExamples, totalLoss
 
 
-# This function is inspired by code from homework 2 of the csci467 course at USC, by Robin Jia
-# No code is copied directly, but the same technique is used to run the model
-def doMLP(X_train, X_test, Y_train, Y_test, argv):
-    trainLoader, devLoader = mlp_loaders(X_train, X_test, Y_train, Y_test, argv)
-    model = MLPmodel(len(Labels.keys()), numF, argv)
+def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
+    trainLoader, devLoader, testLoader = mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev,Y_test, argv)
+    if argv.two_layer:
+        model = MLPDoubleModel(len(Labels.keys()), numF, argv)
+    else:
+        model = MLPTripleModel(len(Labels.keys()), numF, argv)
     lossFunction = nn.CrossEntropyLoss()
-    opt = optim.Adam(model.parameters(), argv.learning_rate)
-
+    if argv.sgd:
+        opt = optim.SGD(model.parameters(), argv.learning_rate)
+    else:
+        opt = optim.Adam(model.parameters(), argv.learning_rate)
+    trainAccList = []
+    trainLossList = []
+    devAccList = []
+    devLossList = []
     for i in tqdm(range(argv.epochs)):
         model.train()
         trainAcc, trainLoss = mlp_epoch(model, lossFunction, opt, trainLoader, argv)
         model.eval()
 
-        # validation
+        #validation
         with no_grad():
             devAcc, devLoss = mlp_epoch(model, lossFunction, opt, devLoader, argv, train=False)
         print("Epoch ", i, "train acc: ", trainAcc, " train loss: ", trainLoss, "dev acc: ", devAcc, "dev loss: ",
               devLoss)
 
+        trainAccList.append(trainAcc)
+        trainLossList.append(trainLoss)
+        devAccList.append(devAcc)
+        devLossList.append(devLoss)
+
+    if testLoader is not None:
+        with no_grad():
+            testAcc, testLoss = mlp_epoch(model, lossFunction, opt, testLoader, argv, train=False)
+        print("Test acc: ", testAcc, " test loss: ", testLoss)
+    toPrint = str(argv.learning_rate) + ", hidden: "+ str(argv.hidden) + ", batch: " + str(argv.batchsize) + ", dropout: " + str(argv.dropout) + ", sgd: " + str(argv.sgd)
+    plt.title("Train acc " + toPrint)
+    plt.plot([i for i in range(argv.epochs)], trainAccList)
+    plt.xlabel("epoch")
+    plt.ylabel("Training accuracy")
+    plt.show()
+
+    plt.title("Train loss " + toPrint)
+    plt.plot([i for i in range(argv.epochs)], trainLossList)
+    plt.xlabel("epoch")
+    plt.ylabel("Training loss")
+    plt.show()
+
+    plt.title("Dev accuracy " + toPrint)
+    plt.plot([i for i in range(argv.epochs)], devAccList)
+    plt.xlabel("epoch")
+    plt.ylabel("Dev accuracy")
+    plt.show()
+
+    plt.title("Dev loss  " + toPrint)
+    plt.plot([i for i in range(argv.epochs)], devLossList)
+    plt.xlabel("epoch")
+    plt.ylabel("Dev loss")
+    plt.show()
+
     # can evaluate on test set here
 
 
-def main(argv):
-    trainDirectories = getClassDirectories(argv.datadir, argv)
-    X, Y = loadMIDIs(trainDirectories)
+def main(argv, X=None, Y=None):
+
+    if (X is None) or (Y is None):
+        trainDirectories = getClassDirectories("dataset", argv)
+        X, Y = loadMIDIs(trainDirectories)
+
+    if argv.testdir is None:
+        X_test = None
+        Y_test = None
+    else:
+        testDirectories = getClassDirectories(argv.testdir, argv)
+        X_test, Y_test = loadMIDIs(testDirectories)
+        printDatasetMetrics(X_test, Y_test, "Test dataset")
+
     printDatasetMetrics(X, Y)
-    X_train, X_test, Y_train, Y_test = model_selection.train_test_split(X, Y,
-                                                                        test_size=0.25)  # can replace this by loading the test set instead
-    doNaiveBayes(X_train, X_test, Y_train, Y_test)
-    doMLP(X_train, X_test, Y_train, Y_test, argv)
+    X_train, X_dev, Y_train, Y_dev = model_selection.train_test_split(X, Y,
+                                                                      test_size=0.25)  # can replace this by loading the test set instead
+    doNaiveBayes(X_train, X_dev, X_test, Y_train, Y_dev, Y_test)
+    doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv)
+
+
+'''
+def scripts(p):
+
+    script1 = "--datadir dataset --batchsize 10 --hidden 200 --learning_rate 0.0055 --epochs 100 --dropout 0.03 --sgd".split()
+    script2 = "--datadir dataset --batchsize 1 --hidden 200 --learning_rate 0.015 --epochs 100 --dropout 0.03".split()
+    script3="--datadir dataset --batchsize 10 --hidden 200 --learning_rate 0.0055 --epochs 100 --dropout 0.0".split()
+    script4="--datadir dataset --batchsize 50 --hidden 300 --learning_rate 0.0035 --epochs 300 --dropout 0.03 ".split()
+    script5="--datadir dataset --batchsize 50 --hidden 300 --learning_rate 0.0035 --epochs 300 --dropout 0.03".split()
+    script6="--datadir dataset --batchsize 100 --hidden 300 --learning_rate 0.0025 --epochs 700 --dropout 0.03 --testdir testset".split()
+    argv = p.parse_args(script1)
+    trainDirectories = getClassDirectories("dataset", argv)
+    X, Y = loadMIDIs(trainDirectories)
+    print("--------Script1--------------")
+    main(p.parse_args(script1), X, Y)
+    print("--------Script2--------------")
+    main(p.parse_args(script2), X, Y)
+    print("--------Script3--------------")
+    main(p.parse_args(script3), X, Y)
+    print("--------Script4--------------")
+    main(p.parse_args(script4), X, Y)
+    print("--------Script5--------------")
+    main(p.parse_args(script5), X, Y)
+    print("--------Script6--------------")
+    main(p.parse_args(script6), X, Y)
     return
+'''
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--datadir", type=str, help="directory to folders of midi files", required=True)
-    p.add_argument("--batchsize", type=int, default=1, help="batch size")
-    p.add_argument("--epochs", type=int, default=200, help="epochs for mlp")
+    p.add_argument("--testdir", type=str, help="directory to folders of midi files", default=None)
+    p.add_argument("--batchsize", type=int, default=100, help="batch size")
+    p.add_argument("--epochs", type=int, default=700, help="epochs for mlp")
     p.add_argument("--hidden", type=int, default=300, help="size of hidden layer in mlp")
-    p.add_argument("--learning_rate", type=float, default=0.15, help="learning rate")
-    p.add_argument("--dropout", type=float, default=0.00, help="probability of dropout in mlp")
+    p.add_argument("--learning_rate", type=float, default=0.0025, help="learning rate")
+    p.add_argument("--sgd", action='store_true', help="Whether to use sgd for optimizer. Default is adam")
+    p.add_argument("--dropout", type=float, default=0.03, help="probability of dropout in mlp")
+    p.add_argument("--two_layer", action='store_true', help="Use a 2 layered mlp, instead of 3 layered")
     p.add_argument("--romantic", default="romantic", type=str, help="name of folder of romantic era midi files")
     p.add_argument("--baroque", default="baroque", type=str, help="name of folder of baroque era midi files")
     p.add_argument("--classical", default="classical", type=str, help="name of folder of classical era midi files")
     p.add_argument("--modern", default="modern", type=str, help="name of folder of modern/contemporary era midi files")
+    #scripts(p)
+
+    #comment these two lines out to run scripts (Don't have to reload train data each time)
     arg = p.parse_args()
     main(arg)
