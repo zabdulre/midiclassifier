@@ -255,12 +255,14 @@ def loadMIDIs(directories):
     loadedLabels.clear()
     filesToLoad.clear()
     loadedFiles.clear()
+    loadedIndices.clear()
+    loadedObjects.clear()
 
     for folder in directories.items():
 
         # Debug: only run on one folder
-        #if (folder[0] != "modern"):
-        #    continue
+        if (folder[0] != "modern"):
+            continue
 
         currentLabel = Labels[folder[0]]
         for fileName in os.listdir(folder[1]):
@@ -271,7 +273,7 @@ def loadMIDIs(directories):
             labelsToLoad.append(currentLabel)
 
     X, Y = getFeatures()
-    return X, Y, loadedObjects
+    return X, Y, loadedIndices.copy()
 
 
 def printDatasetMetrics(X, Y, title="Training Dataset"):
@@ -316,7 +318,12 @@ def mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
                                                                                shuffle=True), DataLoader(testDataset, len(loadedFiles), shuffle=False)
 
 
+#TODO
 def getRawWav(MIDIobject):
+    #get wav from object
+    #make temporary file from wav
+    #create librosa object from file
+    #delete temporary file
     pass
 
 def processWav(rawWav):
@@ -447,12 +454,12 @@ def main(argv, X=None, Y=None, X_filenames=None):
         printDatasetMetrics(X_test, Y_test, "Test dataset")
 
     printDatasetMetrics(X, Y)
-    zipped_train, zipped_dev, Y_train, Y_dev = model_selection.train_test_split(zip(X, X_filenames), Y,
+    zipped_train, zipped_dev, Y_train, Y_dev = model_selection.train_test_split(list(zip(X, X_filenames)), Y,
                                                                       test_size=0.25)  # can replace this by loading the test set instead
-    X_train = list(zipped_train)[0]
-    X_dev = list(zipped_dev)[0]
-    CNN_train = list(zipped_train)[1]
-    CNN_dev = list(zipped_dev)[1]
+    X_train = [i[0] for i in zipped_train]
+    X_dev = [i[0] for i in zipped_dev]
+    CNN_train = [i[1] for i in zipped_train]
+    CNN_dev = [i[1] for i in zipped_dev]
     doNaiveBayes(X_train, X_dev, X_test, Y_train, Y_dev, Y_test)
     doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv)
     doMLP(CNN_train, CNN_dev, CNN_test, Y_train, Y_dev, Y_test, argv, True)
