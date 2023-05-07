@@ -334,7 +334,7 @@ def getMusicFeatures(batchOfFileIndices):
     for index in batchOfFileIndices:
         midiObject = loadedObjects[index]
         midiFileName = loadedFiles[index]
-        rawWav = getRawWav(midiObject) #can pass in midi file name or midi object here
+        rawWav = getRawWav(midiFileName) #can pass in midi file name or midi object here
         processedWav = processWav(rawWav)
         listOfMusicFeatures.append(processedWav)
 
