@@ -2,17 +2,16 @@ import argparse
 import os
 import music21
 import torch
-import pandas as pd
 from sklearn import model_selection, naive_bayes, metrics
 from collections import Counter
 import matplotlib.pyplot as plt
 from joblib import dump, load
 import numpy as np
 from music21 import analysis
-from torch import tensor, nn, optim, no_grad, argmax, sum
+from torch import tensor, nn, optim, no_grad, argmax, sum, flatten
 from torch.utils.data import DataLoader, dataset
 from music21 import pitch
-from Model import MLPDoubleModel, MLPTripleModel
+from Model import MLPDoubleModel, MLPTripleModel, CNNModel
 from tqdm import tqdm
 
 # read the files in to midi objects
@@ -25,12 +24,18 @@ Labels = {"romantic": 0, "modern": 1, "classical": 2, "baroque": 3}
 Numbers = {0: "romantic", 1: "modern",2: "classical", 3:"baroque"}
 loadedData = []  # List of examples (vectors) for each era of music, each example is a dictionary {Label : feature vector}
 loadedLabels = []
+loadedFiles = [] #files in order of labels
+loadedObjects = []
+loadedIndices = []
 labelsToLoad = []
 filesToLoad = []
-
+nbPredictions = []
+mlpPredictions = []
+cnnPredictions = []
 # Number of valid files that had errors when analyzing/extracting features (note: does not account for files that were unable to be parsed in the first place)
 badfilecount = 0
 numF = 0
+cnnNumberOfFeatures = 0 #TODO
 # List of all key signatures
 # ksList = []
 # for a in ["c", "d", "e", "f", "g", "a", "b"]:
@@ -202,6 +207,9 @@ def updateLoadedData(pos, length, out, result):
             numF = len(features)
             loadedData.append(features)
             loadedLabels.append(labelsToLoad[pos])
+            loadedFiles.append(filesToLoad[pos])
+            loadedObjects.append(out)
+            loadedIndices.append(len(loadedIndices))
     return
 
 
@@ -246,11 +254,12 @@ def loadMIDIs(directories):
     loadedData.clear()
     loadedLabels.clear()
     filesToLoad.clear()
+    loadedFiles.clear()
 
     for folder in directories.items():
 
         # Debug: only run on one folder
-       # if (folder[0] != "modern"):
+        #if (folder[0] != "modern"):
         #    continue
 
         currentLabel = Labels[folder[0]]
@@ -262,7 +271,7 @@ def loadMIDIs(directories):
             labelsToLoad.append(currentLabel)
 
     X, Y = getFeatures()
-    return X, Y
+    return X, Y, loadedObjects
 
 
 def printDatasetMetrics(X, Y, title="Training Dataset"):
@@ -291,6 +300,8 @@ def doNaiveBayes(X_train, X_dev, X_test, Y_train, Y_dev, Y_test):
     if X_test is not None and Y_test is not None:
         print("Naive Bayes results on test set: ")
         print(metrics.classification_report(Y_test, nb.predict(X_test)))
+        global nbPredictions
+        nbPredictions = nb.predict(X_test).tolist()
 
 
 def mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
@@ -302,15 +313,36 @@ def mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
     else:
         testDataset = dataset.TensorDataset(tensor(X_test, dtype=torch.float32), tensor(Y_test, dtype=torch.float32))
         return DataLoader(trainDataset, argv.batchsize, shuffle=True), DataLoader(devDataset, argv.batchsize,
-                                                                               shuffle=True), DataLoader(testDataset, argv.batchsize, shuffle=True)
+                                                                               shuffle=True), DataLoader(testDataset, len(loadedFiles), shuffle=False)
 
 
-def mlp_epoch(model, lossFunction, opt, loader, argv, train=True):
+def getRawWav(MIDIobject):
+    pass
+
+def processWav(rawWav):
+    pass
+
+def getMusicFeatures(batchOfFileIndices):
+    listOfMusicFeatures = []
+    for index in batchOfFileIndices:
+        midiObject = loadedObjects[index]
+        midiFileName = loadedFiles[index]
+        rawWav = getRawWav(midiObject) #can pass in midi file name or midi object here
+        processedWav = processWav(rawWav)
+        listOfMusicFeatures.append(processedWav)
+
+    return torch.tensor(listOfMusicFeatures)
+
+
+def mlp_epoch(model, lossFunction, opt, loader, argv, isCNN, train=True, test=False):
     numCorrect = 0
     numExamples = 0
     totalLoss = 0
     for (x, y) in loader:
         opt.zero_grad()
+        modelInput = x
+        if isCNN:
+            modelInput = getMusicFeatures(x)
         modelOutput = model(x)
         loss = lossFunction(modelOutput, y.to(torch.long))
         if train:
@@ -322,32 +354,43 @@ def mlp_epoch(model, lossFunction, opt, loader, argv, train=True):
         numExamples += len(y)
         totalLoss += loss.item()
 
+        if test:
+            global mlpPredictions
+            mlpPredictions.append(flatten(predictions).tolist())
+
     return numCorrect / numExamples, totalLoss
 
 
-def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
-    trainLoader, devLoader, testLoader = mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev,Y_test, argv)
-    if argv.two_layer:
-        model = MLPDoubleModel(len(Labels.keys()), numF, argv)
+
+def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, isCNN=False):
+    trainLoader, devLoader, testLoader = mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv)
+
+    if isCNN:
+        model = CNNModel(len(Labels.keys()), cnnNumberOfFeatures, argv)
     else:
-        model = MLPTripleModel(len(Labels.keys()), numF, argv)
+        if argv.two_layer:
+            model = MLPDoubleModel(len(Labels.keys()), numF, argv)
+        else:
+            model = MLPTripleModel(len(Labels.keys()), numF, argv)
+
     lossFunction = nn.CrossEntropyLoss()
     if argv.sgd:
         opt = optim.SGD(model.parameters(), argv.learning_rate)
     else:
         opt = optim.Adam(model.parameters(), argv.learning_rate)
+
     trainAccList = []
     trainLossList = []
     devAccList = []
     devLossList = []
     for i in tqdm(range(argv.epochs)):
         model.train()
-        trainAcc, trainLoss = mlp_epoch(model, lossFunction, opt, trainLoader, argv)
+        trainAcc, trainLoss = mlp_epoch(model, lossFunction, opt, trainLoader, argv, isCNN)
         model.eval()
 
         #validation
         with no_grad():
-            devAcc, devLoss = mlp_epoch(model, lossFunction, opt, devLoader, argv, train=False)
+            devAcc, devLoss = mlp_epoch(model, lossFunction, opt, devLoader, argv, isCNN, train=False)
         print("Epoch ", i, "train acc: ", trainAcc, " train loss: ", trainLoss, "dev acc: ", devAcc, "dev loss: ",
               devLoss)
 
@@ -358,7 +401,7 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
 
     if testLoader is not None:
         with no_grad():
-            testAcc, testLoss = mlp_epoch(model, lossFunction, opt, testLoader, argv, train=False)
+            testAcc, testLoss = mlp_epoch(model, lossFunction, opt, testLoader, argv, isCNN, train=False, test=True)
         print("Test acc: ", testAcc, " test loss: ", testLoss)
     toPrint = str(argv.learning_rate) + ", hidden: "+ str(argv.hidden) + ", batch: " + str(argv.batchsize) + ", dropout: " + str(argv.dropout) + ", sgd: " + str(argv.sgd)
     plt.title("Train acc " + toPrint)
@@ -388,26 +431,34 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
     # can evaluate on test set here
 
 
-def main(argv, X=None, Y=None):
+def main(argv, X=None, Y=None, X_filenames=None):
 
     if (X is None) or (Y is None):
         trainDirectories = getClassDirectories("dataset", argv)
-        X, Y = loadMIDIs(trainDirectories)
+        X, Y, X_filenames = loadMIDIs(trainDirectories)
 
     if argv.testdir is None:
         X_test = None
         Y_test = None
+        CNN_test = None
     else:
         testDirectories = getClassDirectories(argv.testdir, argv)
-        X_test, Y_test = loadMIDIs(testDirectories)
+        X_test, Y_test, CNN_test = loadMIDIs(testDirectories)
         printDatasetMetrics(X_test, Y_test, "Test dataset")
 
     printDatasetMetrics(X, Y)
-    X_train, X_dev, Y_train, Y_dev = model_selection.train_test_split(X, Y,
+    zipped_train, zipped_dev, Y_train, Y_dev = model_selection.train_test_split(zip(X, X_filenames), Y,
                                                                       test_size=0.25)  # can replace this by loading the test set instead
+    X_train = list(zipped_train)[0]
+    X_dev = list(zipped_dev)[0]
+    CNN_train = list(zipped_train)[1]
+    CNN_dev = list(zipped_dev)[1]
     doNaiveBayes(X_train, X_dev, X_test, Y_train, Y_dev, Y_test)
     doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv)
-
+    doMLP(CNN_train, CNN_dev, CNN_test, Y_train, Y_dev, Y_test, argv, True)
+    if argv.testdir is not None:
+        for i in range(len(Y_test)):
+            print("For ", loadedFiles[i], " nb predicted: ", Numbers[nbPredictions[i]], ", mlp predicted: ", Numbers[mlpPredictions[0][i]])
 
 '''
 def scripts(p):
@@ -436,7 +487,6 @@ def scripts(p):
     return
 '''
 
-
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--datadir", type=str, help="directory to folders of midi files", required=True)
@@ -452,8 +502,8 @@ if __name__ == "__main__":
     p.add_argument("--baroque", default="baroque", type=str, help="name of folder of baroque era midi files")
     p.add_argument("--classical", default="classical", type=str, help="name of folder of classical era midi files")
     p.add_argument("--modern", default="modern", type=str, help="name of folder of modern/contemporary era midi files")
-    #scripts(p)
-
     #comment these two lines out to run scripts (Don't have to reload train data each time)
     arg = p.parse_args()
     main(arg)
+    #scripts(p)
+

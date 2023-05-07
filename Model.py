@@ -13,6 +13,7 @@ class MLPDoubleModel(nn.Module):
         self.nonLinearity = F.relu
         self.dropout = nn.Dropout(dropout_prob)
         self.hiddenLayer: nn.Linear = nn.Linear(hidden_dim, number_of_classes)
+        self.isAudioModel = False
         return
 
     def forward(self, features):
@@ -36,6 +37,7 @@ class MLPTripleModel(nn.Module):
         self.dropout2 = nn.Dropout(dropout_prob)
         self.hiddenLayer1: nn.Linear = nn.Linear(hidden_dim, hidden_dim)
         self.hiddenLayer2: nn.Linear = nn.Linear(hidden_dim, number_of_classes)
+        self.isAudioModel = False
         return
 
     def forward(self, x):
@@ -47,4 +49,17 @@ class MLPTripleModel(nn.Module):
         layer2Output = self.dropout2(layer2PreDropout)
         layer3PreSigmoid = self.hiddenLayer2(layer2Output)
         output = layer3PreSigmoid
+        return output
+
+class CNNModel(nn.Module):
+    def __init__(self, number_of_classes, length_of_feature_vector, argv):
+        super(CNNModel, self).__init__()
+        inputDimension = length_of_feature_vector
+        hidden_dim = argv.hidden
+        dropout_prob = argv.dropout
+        self.isAudioModel = True
+        return
+
+    def forward(self, x):
+        output = None
         return output
