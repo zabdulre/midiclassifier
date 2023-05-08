@@ -2,6 +2,7 @@ import argparse
 import os
 import music21
 
+
 def getClassDirectories(rootdir, argv):
     return {"romantic": rootdir + "/" + argv.romantic, "baroque": rootdir + "/" + argv.baroque,
         "classical": rootdir + "/" + argv.classical, "modern": rootdir + "/" + argv.modern}
@@ -14,7 +15,6 @@ def createWavFromMidi(filePath: str):
             return
 
         wavFilePath = os.path.splitext(filePath)[0] + ".wav"
-
         #TODO
         #create wav from midi object here
 

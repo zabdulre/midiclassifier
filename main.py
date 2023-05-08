@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader, dataset
 from music21 import pitch
 from Model import MLPDoubleModel, MLPTripleModel, CNNModel
 from tqdm import tqdm
+import librosa
 
 # read the files in to midi objects
 # send the object into a processing function
@@ -273,7 +274,7 @@ def loadMIDIs(directories):
             labelsToLoad.append(currentLabel)
 
     X, Y = getFeatures()
-    return X, Y, loadedIndices.copy()
+    return X, Y, loadedIndices.copy(), loadedFiles.copy()
 
 
 def printDatasetMetrics(X, Y, title="Training Dataset"):
@@ -319,21 +320,23 @@ def mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
 
 
 #TODO
-def getRawWav(MIDIobject):
+def getRawWav(filename):
     #get wav from object
-    #make temporary file from wav
+    wavFilePath = os.path.splitext(filename)[0] + ".wav"
+    command = 'timidity {} -Ow -G0-1:00.000 -o {}'.format(filename, wavFilePath)
+    os.popen(command)
     #create librosa object from file
+
     #delete temporary file
-    pass
+    os.remove(wavFilePath)
 
 def processWav(rawWav):
     pass
 
-def getMusicFeatures(batchOfFileIndices):
+def getMusicFeatures(batchOfFileIndices, listOfFiles):
     listOfMusicFeatures = []
     for index in batchOfFileIndices:
-        midiObject = loadedObjects[index]
-        midiFileName = loadedFiles[index]
+        midiFileName = listOfFiles[index]
         rawWav = getRawWav(midiFileName) #can pass in midi file name or midi object here
         processedWav = processWav(rawWav)
         listOfMusicFeatures.append(processedWav)
@@ -341,7 +344,7 @@ def getMusicFeatures(batchOfFileIndices):
     return torch.tensor(listOfMusicFeatures)
 
 
-def mlp_epoch(model, lossFunction, opt, loader, argv, isCNN, train=True, test=False):
+def mlp_epoch(model, lossFunction, opt, loader, argv, isCNN, CNN_files, train=True, test=False):
     numCorrect = 0
     numExamples = 0
     totalLoss = 0
@@ -349,7 +352,7 @@ def mlp_epoch(model, lossFunction, opt, loader, argv, isCNN, train=True, test=Fa
         opt.zero_grad()
         modelInput = x
         if isCNN:
-            modelInput = getMusicFeatures(x)
+            modelInput = getMusicFeatures(x, CNN_files)
         modelOutput = model(x)
         loss = lossFunction(modelOutput, y.to(torch.long))
         if train:
@@ -369,7 +372,7 @@ def mlp_epoch(model, lossFunction, opt, loader, argv, isCNN, train=True, test=Fa
 
 
 
-def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, isCNN=False):
+def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, CNN_files = None, CNN_testFiles = None, isCNN=False):
     trainLoader, devLoader, testLoader = mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv)
 
     if isCNN:
@@ -392,12 +395,12 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, isCNN=False):
     devLossList = []
     for i in tqdm(range(argv.epochs)):
         model.train()
-        trainAcc, trainLoss = mlp_epoch(model, lossFunction, opt, trainLoader, argv, isCNN)
+        trainAcc, trainLoss = mlp_epoch(model, lossFunction, opt, trainLoader, argv, isCNN, CNN_files)
         model.eval()
 
         #validation
         with no_grad():
-            devAcc, devLoss = mlp_epoch(model, lossFunction, opt, devLoader, argv, isCNN, train=False)
+            devAcc, devLoss = mlp_epoch(model, lossFunction, opt, devLoader, argv, isCNN, CNN_files, train=False)
         print("Epoch ", i, "train acc: ", trainAcc, " train loss: ", trainLoss, "dev acc: ", devAcc, "dev loss: ",
               devLoss)
 
@@ -408,7 +411,7 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, isCNN=False):
 
     if testLoader is not None:
         with no_grad():
-            testAcc, testLoss = mlp_epoch(model, lossFunction, opt, testLoader, argv, isCNN, train=False, test=True)
+            testAcc, testLoss = mlp_epoch(model, lossFunction, opt, testLoader, argv, isCNN, CNN_testFiles, train=False, test=True)
         print("Test acc: ", testAcc, " test loss: ", testLoss)
     toPrint = str(argv.learning_rate) + ", hidden: "+ str(argv.hidden) + ", batch: " + str(argv.batchsize) + ", dropout: " + str(argv.dropout) + ", sgd: " + str(argv.sgd)
     plt.title("Train acc " + toPrint)
@@ -442,7 +445,7 @@ def main(argv, X=None, Y=None, X_filenames=None):
 
     if (X is None) or (Y is None):
         trainDirectories = getClassDirectories("dataset", argv)
-        X, Y, X_filenames = loadMIDIs(trainDirectories)
+        X, Y, CNN, CNN_files = loadMIDIs(trainDirectories)
 
     if argv.testdir is None:
         X_test = None
@@ -450,11 +453,11 @@ def main(argv, X=None, Y=None, X_filenames=None):
         CNN_test = None
     else:
         testDirectories = getClassDirectories(argv.testdir, argv)
-        X_test, Y_test, CNN_test = loadMIDIs(testDirectories)
+        X_test, Y_test, CNN_test, CNN_test_files = loadMIDIs(testDirectories)
         printDatasetMetrics(X_test, Y_test, "Test dataset")
 
     printDatasetMetrics(X, Y)
-    zipped_train, zipped_dev, Y_train, Y_dev = model_selection.train_test_split(list(zip(X, X_filenames)), Y,
+    zipped_train, zipped_dev, Y_train, Y_dev = model_selection.train_test_split(list(zip(X, CNN)), Y,
                                                                       test_size=0.25)  # can replace this by loading the test set instead
     X_train = [i[0] for i in zipped_train]
     X_dev = [i[0] for i in zipped_dev]
@@ -462,7 +465,7 @@ def main(argv, X=None, Y=None, X_filenames=None):
     CNN_dev = [i[1] for i in zipped_dev]
     doNaiveBayes(X_train, X_dev, X_test, Y_train, Y_dev, Y_test)
     doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv)
-    doMLP(CNN_train, CNN_dev, CNN_test, Y_train, Y_dev, Y_test, argv, True)
+    doMLP(CNN_train, CNN_dev, CNN_test, Y_train, Y_dev, Y_test, argv, CNN_files, CNN_test_files, True)
     if argv.testdir is not None:
         for i in range(len(Y_test)):
             print("For ", loadedFiles[i], " nb predicted: ", Numbers[nbPredictions[i]], ", mlp predicted: ", Numbers[mlpPredictions[0][i]])
