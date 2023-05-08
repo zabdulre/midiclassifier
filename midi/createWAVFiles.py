@@ -1,23 +1,25 @@
 import argparse
 import os
 
+#to run this script, create a folder and name it wav in the base project directory
+
 timidityPath = '/usr/local/bin/timidity'
 
 def getClassDirectories(rootdir, argv):
     return {"romantic": rootdir + "/" + argv.romantic, "baroque": rootdir + "/" + argv.baroque,
         "classical": rootdir + "/" + argv.classical, "modern": rootdir + "/" + argv.modern}
 
-def createWavFromMidi(filename: str):
+def createWavFromMidi(filepath: str, filename: str, rootdir):
         try:
-            wavFilePath = os.path.splitext(filename)[0] + ".wav"
-            command = timidityPath + ' {} -Ow -G0-1:00.000 -o {}'.format(filename, wavFilePath)
+            wavFilePath = "../wav/" + os.path.splitext(filepath)[0] + ".wav"
+            command = timidityPath + ' {} -Ow -G0-1:00.000 -o {}'.format(filepath, wavFilePath)
             os.system(command)
         except:
-            print(filename, "could not be parsed, skipping...")
+            print(filepath, "could not be parsed, skipping...")
             return
 
 
-def createFiles(directories):
+def createFiles(directories, rootdir):
     for folder in directories.items():
         # Debug: only run on one folder
         #if (folder[0] != "modern"):
@@ -27,15 +29,15 @@ def createFiles(directories):
             if fileName[0] == '.':  # skip any hidden files
                 continue
             currentFileDirectory = folder[1] + "/" + fileName
-            createWavFromMidi(currentFileDirectory)
+            createWavFromMidi(currentFileDirectory, fileName, rootdir)
 
     return
 
 def main(argv):
     trainDirectories = getClassDirectories(argv.datadir, argv)
     testDirectories = getClassDirectories(argv.testdir, argv)
-    createFiles(trainDirectories)
-    createFiles(testDirectories)
+    createFiles(trainDirectories, argv.datadir)
+    createFiles(testDirectories, argv.testdir)
 
 
 if __name__ == "__main__":
