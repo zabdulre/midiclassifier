@@ -59,14 +59,15 @@ class CNNModel(nn.Module):
         dropout_prob = argv.dropout
         self.isAudioModel = True
         #replace kernel of 5x5 with axb (make it look at decent number of frequencies, not too much timestep)
-        self.conv1 = nn.Conv2d(1, 16, 3)
+        self.conv1 = nn.Conv2d(1, 8, 3)
         self.pool = nn.MaxPool2d(2)
-        self.conv2 = nn.Conv2d(16, 16, 3)
-        self.conv3 = nn.Conv2d(16, 16, 3)
+        self.conv2 = nn.Conv2d(8, 16, 3)
+        self.conv3 = nn.Conv2d(16, 32, 3)
+        self.conv4 = nn.Conv2d(32, 64, 3)
         self.flat = nn.Flatten()
-        self.fc1 = nn.Linear(389088, 512) #TODO calculate this
-        self.dropout = nn.Dropout(0)
-        self.fc2 = nn.Linear(512, 4)
+        self.fc1 = nn.Linear(6400, number_of_classes) #TODO calculate this
+        #self.dropout = nn.Dropout(dropout_prob)
+        #self.fc2 = nn.Linear(50000, number_of_classes)
         #self.fc1 = nn.Linear(20 * ((((((inputDimensionFreq-k1+1)/2)-k2+1)/2)-k3+1)/2)
        #                      * ((((((inputDimensionTimestep-k1+1)/2)-k2+1)/2)-k3+1)/2), 120)
         return
@@ -76,9 +77,11 @@ class CNNModel(nn.Module):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = self.pool(F.relu(self.conv3(x)))
+        x = self.pool(F.relu(self.conv4(x)))
         x = self.flat(x) # flatten all dimensions except batch
-        x = F.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.fc2(x)
+        x = self.fc1(x)
+        #x = F.relu(self.fc1(x))
+        #x = self.dropout(x)
+        #x = self.fc2(x)
         output = x
         return output
