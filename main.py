@@ -320,35 +320,36 @@ def mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
                                                                                shuffle=True), DataLoader(testDataset, len(loadedFiles), shuffle=False)
 
 
-#TODO
-# def getRawWav(filename):
-#     #get wav from object
-#     wavFilePath = os.path.splitext(filename)[0] + ".wav"
-#     command = timidityPath + ' {} -Ow -G0-1:00.000 -o {}'.format(filename, wavFilePath)
-#     os.system(command)
-#     #create librosa object from file
 
-#     #delete temporary file
-#     os.remove(wavFilePath)
-
-
-def wavToCNNInput(Wav_filepath):
+#For each wav file, get Short-Time Fourier Transform.
+#We then take the magnitude of the spectrum. Getting us a frequency x timestep matrix.
+def wavToCNNInput(Wav_filepath, max_time=512, max_freq=512, maxLength=50000):
     audio, sample_rate = librosa.load(Wav_filepath)
-    spectrum = librosa.stft(audio)
+    if audio.shape[0] < maxLength:
+        audio = np.pad(audio, (maxLength - audio.shape[0]))
+        audio = audio[:maxLength]
+    else:
+        audio = audio[:maxLength]
+    spectrum = librosa.stft(audio, hop_length=32, win_length=320) #TODO make this much smaller
     out = np.abs(spectrum)
-    #First dimension should be frequency, second dimension is time
-    if out.shape[1] < 2048:
-        out = np.pad(out, (0, 2048 - out.shape[1]), constant_values=7.0)
+    #2048, 1025 were og values
+    '''
+    if out.shape[1] < max_time: #TODO make this much smaller
+        out = np.pad(out, (0, max_time - out.shape[1]), constant_values=0.0)
     else:
-        out = out[:,:2048]
+        out = out[:,:max_time]
 
-    if out.shape[0] < 1025:
-        out = np.pad(out, (1025 - out.shape[0], 0), constant_values=7.0)
+    if out.shape[0] < max_freq: #TODO make this much smaller
+        out = np.pad(out, (max_freq - out.shape[0], 0), constant_values=0.0)
+        out = out[:,:max_time]
     else:
-        out = out[:1025,:]
+        out = out[:max_freq,:]
+    '''
 
     return out
 
+#For each file, get & add the FT Matrix (input to CNN)
+#Run the list of FTMatrices (so tensor is 3D)
 def getMusicFTMat(batchOfFileIndices, listOfFiles):
     listOfFTMatrices = []
     for index in tqdm(batchOfFileIndices):
@@ -466,11 +467,11 @@ def loadWAVs(directories):
     Y = []
     for folder in directories.items():
         # Debug: only run on one folder
-        if (folder[0] != "modern"):
-            continue
+        #if (folder[0] != "modern"):
+        #    continue
 
         currentLabel = Labels[folder[0]]
-        for fileName in os.listdir(folder[1])[:10]:
+        for fileName in os.listdir(folder[1])[:8]:
             if fileName[0] == '.':  # skip any hidden files
                 continue
             currentFilePath = folder[1] + "/" + fileName

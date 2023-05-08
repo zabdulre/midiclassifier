@@ -55,19 +55,19 @@ class CNNModel(nn.Module):
     def __init__(self, number_of_classes, dims_of_feature_matrix, argv):
         super(CNNModel, self).__init__()
         #num freuqencies should be 2048
-        inputDimensionFreq, inputDimensionTimestep = dims_of_feature_matrix
+        inputDimensionFreq, inputDimensionTimestep = dims_of_feature_matrix #TODO use these
         dropout_prob = argv.dropout
         self.isAudioModel = True
 
         #replace kernel of 5x5 with axb (make it look at decent number of frequencies, not too much timestep)
-        self.conv1 = nn.Conv2d(1, 8, 25)
+        self.conv1 = nn.Conv2d(1, 16, 3)
         self.pool = nn.MaxPool2d(2)
-        self.conv2 = nn.Conv2d(8, 16, 20)
-        self.conv3 = nn.Conv2d(16,20, 10)
-        self.fc1 = nn.Linear(558900, 120)
-        self.dropout = nn.Dropout(dropout_prob)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, number_of_classes)
+        self.conv2 = nn.Conv2d(16, 16, 3)
+        self.conv3 = nn.Conv2d(16, 16, 3)
+        self.flat = nn.Flatten()
+        self.fc1 = nn.Linear(389088, 512) #TODO calculate this
+        self.dropout = nn.Dropout(0)
+        self.fc2 = nn.Linear(512, 4)
         return
 
     def forward(self, x):
@@ -75,11 +75,9 @@ class CNNModel(nn.Module):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = self.pool(F.relu(self.conv3(x)))
-        x = flatten(x, 1) # flatten all dimensions except batch
+        x = self.flat(x) # flatten all dimensions except batch
         x = F.relu(self.fc1(x))
         x = self.dropout(x)
-        x = F.relu(self.fc2(x))
-        x = self.dropout(x)
-        x = self.fc3(x)
+        x = self.fc2(x)
         output = x
         return output
