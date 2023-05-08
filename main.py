@@ -337,8 +337,9 @@ def wavToCNNInput(Wav_filepath):
     audio, sample_rate = librosa.load(Wav_filepath)
     spectrum = librosa.stft(audio, n_fft=512)
     out = np.abs(spectrum)
+    cnnFTMatrixDimensions = out.shape
     one_chan = np.expand_dims(out, axis=0)
-    #First dimension should be frequency, second dimension is time
+    #First dimension is one channel, second should be frequency?, second dimension is time?
     return one_chan
 
 #For each file, get & add the FT Matrix (input to CNN)
@@ -348,8 +349,6 @@ def getMusicFTMat(batchOfFileIndices, listOfFiles):
     for index in batchOfFileIndices:
         midiFileName = listOfFiles[int(index.item())]
         #rawWav = getRawWav(midiFileName) #can pass in midi file name or midi object here
-        #processedWav = processWav(rawWav)
-        #listOfMusicFeatures.append(processedWav)
         listOfFTMatrices.append(wavToCNNInput(midiFileName))
 
     #return torch.tensor(listOfMusicFeatures)
