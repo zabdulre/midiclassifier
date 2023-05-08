@@ -337,8 +337,9 @@ def wavToCNNInput(Wav_filepath):
     audio, sample_rate = librosa.load(Wav_filepath)
     spectrum = librosa.stft(audio, n_fft=512)
     out = np.abs(spectrum)
+    one_chan = np.expand_dims(out, axis=0)
     #First dimension should be frequency, second dimension is time
-    return out
+    return one_chan
 
 #For each file, get & add the FT Matrix (input to CNN)
 #Run the list of FTMatrices (so tensor is 3D)

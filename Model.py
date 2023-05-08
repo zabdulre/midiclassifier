@@ -67,7 +67,7 @@ class CNNModel(nn.Module):
         self.fc1 = nn.Linear(16 * 10 * 10, 120)
         self.dropout = nn.Dropout(dropout_prob)
         self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 10)
+        self.fc3 = nn.Linear(84, number_of_classes)
         return
 
     def forward(self, x):
