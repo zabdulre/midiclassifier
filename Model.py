@@ -59,15 +59,16 @@ class CNNModel(nn.Module):
         dropout_prob = argv.dropout
         self.isAudioModel = True
 
-        k1=25-1
-        k2=15-1
-        k3=11-1
+        k1=25
+        k2=15
+        k3=11
         #replace kernel with a rectangular one? (make it look at decent number of frequencies, not too much timestep)
-        self.conv1 = nn.Conv2d(1, 8, 25)
+        self.conv1 = nn.Conv2d(1, 8, k1)
         self.pool = nn.MaxPool2d(2)
-        self.conv2 = nn.Conv2d(8, 16, 15)
-        self.conv3 = nn.Conv3d(16,20, 11)
-        self.fc1 = nn.Linear(20 * ((((((inputDimensionFreq-k1)/2)-k2)/2)-k3)/2) * ((((((inputDimensionTimestep-k1)/2)-k2)/2)-k3)/2), 120)
+        self.conv2 = nn.Conv2d(8, 16, k2)
+        self.conv3 = nn.Conv3d(16,20, k3)
+        self.fc1 = nn.Linear(20 * ((((((inputDimensionFreq-k1+1)/2)-k2+1)/2)-k3+1)/2) 
+                             * ((((((inputDimensionTimestep-k1+1)/2)-k2+1)/2)-k3+1)/2), 120)
         self.dropout = nn.Dropout(dropout_prob)
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, number_of_classes)
