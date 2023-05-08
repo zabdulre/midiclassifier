@@ -331,14 +331,17 @@ def mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
 #     #delete temporary file
 #     os.remove(wavFilePath)
 
-
+#For each wav file, get Short-Time Fourier Transform.
+#We then take the magnitude of the spectrum. Getting us a frequency x timestep matrix.
 def wavToCNNInput(Wav_filepath):
     audio, sample_rate = librosa.load(Wav_filepath)
-    spectrum = librosa.stft(audio)
+    spectrum = librosa.stft(audio, n_fft=512)
     out = np.abs(spectrum)
     #First dimension should be frequency, second dimension is time
     return out
 
+#For each file, get & add the FT Matrix (input to CNN)
+#Run the list of FTMatrices (so tensor is 3D)
 def getMusicFTMat(batchOfFileIndices, listOfFiles):
     listOfFTMatrices = []
     for index in batchOfFileIndices:
