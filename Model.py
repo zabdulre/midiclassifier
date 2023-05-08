@@ -58,7 +58,6 @@ class CNNModel(nn.Module):
         inputDimensionFreq, inputDimensionTimestep = dims_of_feature_matrix #TODO use these
         dropout_prob = argv.dropout
         self.isAudioModel = True
-
         #replace kernel of 5x5 with axb (make it look at decent number of frequencies, not too much timestep)
         self.conv1 = nn.Conv2d(1, 16, 3)
         self.pool = nn.MaxPool2d(2)
@@ -68,6 +67,8 @@ class CNNModel(nn.Module):
         self.fc1 = nn.Linear(389088, 512) #TODO calculate this
         self.dropout = nn.Dropout(0)
         self.fc2 = nn.Linear(512, 4)
+        #self.fc1 = nn.Linear(20 * ((((((inputDimensionFreq-k1+1)/2)-k2+1)/2)-k3+1)/2)
+       #                      * ((((((inputDimensionTimestep-k1+1)/2)-k2+1)/2)-k3+1)/2), 120)
         return
 
     def forward(self, x):

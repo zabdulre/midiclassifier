@@ -355,8 +355,6 @@ def getMusicFTMat(batchOfFileIndices, listOfFiles):
     for index in tqdm(batchOfFileIndices):
         midiFileName = listOfFiles[int(index.item())]
         #rawWav = getRawWav(midiFileName) #can pass in midi file name or midi object here
-        #processedWav = processWav(rawWav)
-        #listOfMusicFeatures.append(processedWav)
         listOfFTMatrices.append(wavToCNNInput(midiFileName))
 
     #return torch.tensor(listOfMusicFeatures)
