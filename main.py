@@ -337,11 +337,21 @@ def wavToCNNInput(Wav_filepath):
     spectrum = librosa.stft(audio)
     out = np.abs(spectrum)
     #First dimension should be frequency, second dimension is time
+    if out.shape[1] < 2048:
+        out = np.pad(out, (0, 2048 - out.shape[1]), constant_values=7.0)
+    else:
+        out = out[:,:2048]
+
+    if out.shape[0] < 1025:
+        out = np.pad(out, (1025 - out.shape[0], 0), constant_values=7.0)
+    else:
+        out = out[:1025,:]
+
     return out
 
 def getMusicFTMat(batchOfFileIndices, listOfFiles):
     listOfFTMatrices = []
-    for index in batchOfFileIndices:
+    for index in tqdm(batchOfFileIndices):
         midiFileName = listOfFiles[int(index.item())]
         #rawWav = getRawWav(midiFileName) #can pass in midi file name or midi object here
         #processedWav = processWav(rawWav)
@@ -352,15 +362,12 @@ def getMusicFTMat(batchOfFileIndices, listOfFiles):
     return torch.tensor(listOfFTMatrices)
 
 
-def mlp_epoch(model, lossFunction, opt, loader, argv, isCNN, CNN_files, train=True, test=False):
+def mlp_epoch(model, lossFunction, opt, loader, argv, train=True, test=False):
     numCorrect = 0
     numExamples = 0
     totalLoss = 0
     for (x, y) in loader:
         opt.zero_grad()
-        modelInput = x
-        if isCNN:
-            modelInput = getMusicFTMat(x, CNN_files)
         modelOutput = model(x)
         loss = lossFunction(modelOutput, y.to(torch.long))
         if train:
@@ -380,7 +387,7 @@ def mlp_epoch(model, lossFunction, opt, loader, argv, isCNN, CNN_files, train=Tr
 
 
 
-def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, CNN_files = None, CNN_testFiles = None, isCNN=False):
+def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, isCNN=False):
     trainLoader, devLoader, testLoader = mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv)
 
     if isCNN:
@@ -403,12 +410,12 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, CNN_files = None
     devLossList = []
     for i in tqdm(range(argv.epochs)):
         model.train()
-        trainAcc, trainLoss = mlp_epoch(model, lossFunction, opt, trainLoader, argv, isCNN, CNN_files)
+        trainAcc, trainLoss = mlp_epoch(model, lossFunction, opt, trainLoader, argv)
         model.eval()
 
         #validation
         with no_grad():
-            devAcc, devLoss = mlp_epoch(model, lossFunction, opt, devLoader, argv, isCNN, CNN_files, train=False)
+            devAcc, devLoss = mlp_epoch(model, lossFunction, opt, devLoader, argv, train=False)
         print("Epoch ", i, "train acc: ", trainAcc, " train loss: ", trainLoss, "dev acc: ", devAcc, "dev loss: ",
               devLoss)
 
@@ -419,7 +426,7 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, CNN_files = None
 
     if testLoader is not None:
         with no_grad():
-            testAcc, testLoss = mlp_epoch(model, lossFunction, opt, testLoader, argv, isCNN, CNN_testFiles, train=False, test=True)
+            testAcc, testLoss = mlp_epoch(model, lossFunction, opt, testLoader, argv, train=False, test=True)
         print("Test acc: ", testAcc, " test loss: ", testLoss)
 
     toPrint = ""
@@ -455,8 +462,7 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, CNN_files = None
 
 
 def loadWAVs(directories):
-    CNN_temp_files = []
-    indices = []
+    X = []
     Y = []
     for folder in directories.items():
         # Debug: only run on one folder
@@ -464,15 +470,17 @@ def loadWAVs(directories):
             continue
 
         currentLabel = Labels[folder[0]]
-        for fileName in os.listdir(folder[1]):
+        for fileName in os.listdir(folder[1])[:10]:
             if fileName[0] == '.':  # skip any hidden files
                 continue
-            currentFileDirectory = folder[1] + "/" + fileName
-            CNN_temp_files.append(currentFileDirectory)
-            indices.append(len(indices))
+            currentFilePath = folder[1] + "/" + fileName
+            print("Parsing " + currentFilePath)
+            #CNN_temp_files.append(currentFileDirectory)
+            #indices.append(len(indices))
+            X.append(wavToCNNInput(currentFilePath))
             Y.append(currentLabel)
 
-    return indices, Y, CNN_temp_files.copy()
+    return np.stack(X, 0) , Y
 
 
 def main(argv, X=None, Y=None, X_filenames=None):
@@ -497,17 +505,16 @@ def main(argv, X=None, Y=None, X_filenames=None):
 
     if argv.wavdatadir is not None:
         wavTrainDirs = getClassDirectories(argv.wavdatadir, argv)
-        X, Y, CNN_files = loadWAVs(wavTrainDirs)
+        X, Y = loadWAVs(wavTrainDirs)
         X_train, X_dev, Y_train, Y_dev = model_selection.train_test_split(X, Y,
                                                                           test_size=0.25)
         if argv.wavtestdir is None:
             X_test = None
             Y_test = None
-            CNN_test_files = None
         else:
             wavTrainDirs = getClassDirectories(argv.wavtestdir, argv)
-            X_test, Y_test, CNN_test_files = loadWAVs(wavTrainDirs)
-        doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, CNN_files, CNN_test_files, True)
+            X_test, Y_test = loadWAVs(wavTrainDirs)
+        doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, True)
 
     #TODO make this include CNN
     if argv.testdir is not None:
@@ -548,7 +555,7 @@ if __name__ == "__main__":
     p.add_argument("--wavdatadir", type=str, help="directory to folders of wav files", default=None)
     p.add_argument("--wavtestdir", type=str, help="directory to folders of wav files", default=None)
     p.add_argument("--batchsize", type=int, default=100, help="batch size")
-    p.add_argument("--epochs", type=int, default=700, help="epochs for mlp")
+    p.add_argument("--epochs", type=int, default=5, help="epochs for mlp")
     p.add_argument("--hidden", type=int, default=300, help="size of hidden layer in mlp")
     p.add_argument("--learning_rate", type=float, default=0.0025, help="learning rate")
     p.add_argument("--sgd", action='store_true', help="Whether to use sgd for optimizer. Default is adam")

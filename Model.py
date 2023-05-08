@@ -1,6 +1,6 @@
 from torch import nn
 import torch.nn.functional as F
-from torch import flatten
+from torch import flatten, unsqueeze
 
 class MLPDoubleModel(nn.Module):
 
@@ -63,14 +63,15 @@ class CNNModel(nn.Module):
         self.conv1 = nn.Conv2d(1, 8, 25)
         self.pool = nn.MaxPool2d(2)
         self.conv2 = nn.Conv2d(8, 16, 20)
-        self.conv3 = nn.Conv3d(16,20, 10)
-        self.fc1 = nn.Linear(16 * 10 * 10, 120)
+        self.conv3 = nn.Conv2d(16,20, 10)
+        self.fc1 = nn.Linear(558900, 120)
         self.dropout = nn.Dropout(dropout_prob)
         self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 10)
+        self.fc3 = nn.Linear(84, number_of_classes)
         return
 
     def forward(self, x):
+        x = unsqueeze(x, 1)
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = self.pool(F.relu(self.conv3(x)))
