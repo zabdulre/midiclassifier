@@ -37,7 +37,7 @@ cnnPredictions = []
 # Number of valid files that had errors when analyzing/extracting features (note: does not account for files that were unable to be parsed in the first place)
 badfilecount = 0
 numF = 0
-cnnNumberOfFeatures = (1,1) #TODO
+cnnFTMatrixDimensions = (1,1) #TODO
 # List of all key signatures
 # ksList = []
 # for a in ["c", "d", "e", "f", "g", "a", "b"]:
@@ -321,18 +321,15 @@ def mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
 
 
 #TODO
-def getRawWav(filename):
-    #get wav from object
-    wavFilePath = os.path.splitext(filename)[0] + ".wav"
-    command = timidityPath + ' {} -Ow -G0-1:00.000 -o {}'.format(filename, wavFilePath)
-    os.system(command)
-    #create librosa object from file
+# def getRawWav(filename):
+#     #get wav from object
+#     wavFilePath = os.path.splitext(filename)[0] + ".wav"
+#     command = timidityPath + ' {} -Ow -G0-1:00.000 -o {}'.format(filename, wavFilePath)
+#     os.system(command)
+#     #create librosa object from file
 
-    #delete temporary file
-    os.remove(wavFilePath)
-
-def processWav(rawWav):
-    pass
+#     #delete temporary file
+#     os.remove(wavFilePath)
 
 
 def wavToCNNInput(Wav_filepath):
@@ -342,17 +339,17 @@ def wavToCNNInput(Wav_filepath):
     #First dimension should be frequency, second dimension is time
     return out
 
-def getMusicFeatures(batchOfFileIndices, listOfFiles):
-    listOfMusicFeatures = []
+def getMusicFTMat(batchOfFileIndices, listOfFiles):
+    listOfFTMatrices = []
     for index in batchOfFileIndices:
         midiFileName = listOfFiles[int(index.item())]
         #rawWav = getRawWav(midiFileName) #can pass in midi file name or midi object here
         #processedWav = processWav(rawWav)
         #listOfMusicFeatures.append(processedWav)
-        cnnin = wavToCNNInput(midiFileName)
+        listOfFTMatrices.append(wavToCNNInput(midiFileName))
 
     #return torch.tensor(listOfMusicFeatures)
-    return torch.tensor(cnnin)
+    return torch.tensor(listOfFTMatrices)
 
 
 def mlp_epoch(model, lossFunction, opt, loader, argv, isCNN, CNN_files, train=True, test=False):
@@ -363,7 +360,7 @@ def mlp_epoch(model, lossFunction, opt, loader, argv, isCNN, CNN_files, train=Tr
         opt.zero_grad()
         modelInput = x
         if isCNN:
-            modelInput = getMusicFeatures(x, CNN_files)
+            modelInput = getMusicFTMat(x, CNN_files)
         modelOutput = model(x)
         loss = lossFunction(modelOutput, y.to(torch.long))
         if train:
@@ -387,7 +384,7 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, CNN_files = None
     trainLoader, devLoader, testLoader = mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv)
 
     if isCNN:
-        model = CNNModel(len(Labels.keys()), cnnNumberOfFeatures, argv)
+        model = CNNModel(len(Labels.keys()), cnnFTMatrixDimensions, argv)
     else:
         if argv.two_layer:
             model = MLPDoubleModel(len(Labels.keys()), numF, argv)

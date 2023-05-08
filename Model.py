@@ -52,19 +52,19 @@ class MLPTripleModel(nn.Module):
         return output
 
 class CNNModel(nn.Module):
-    def __init__(self, number_of_classes, length_of_feature_matrix, argv):
+    def __init__(self, number_of_classes, dims_of_feature_matrix, argv):
         super(CNNModel, self).__init__()
         #num freuqencies should be 2048
-        inputDimensionFreq, inputDimensionTimestep = length_of_feature_matrix
+        inputDimensionFreq, inputDimensionTimestep = dims_of_feature_matrix
         dropout_prob = argv.dropout
         self.isAudioModel = True
 
         #replace kernel of 5x5 with axb (make it look at decent number of frequencies, not too much timestep)
-        self.conv1 = nn.Conv2d(1, 8, 5)
+        self.conv1 = nn.Conv2d(1, 8, 25)
         self.pool = nn.MaxPool2d(2)
-        self.conv2 = nn.Conv2d(8, 16, 5)
-        self.conv3 = nn.Conv3d(16,20,5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.conv2 = nn.Conv2d(8, 16, 20)
+        self.conv3 = nn.Conv3d(16,20, 10)
+        self.fc1 = nn.Linear(16 * 10 * 10, 120)
         self.dropout = nn.Dropout(dropout_prob)
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, 10)
