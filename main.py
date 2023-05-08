@@ -273,8 +273,8 @@ def loadMIDIs(directories):
     for folder in directories.items():
 
         # Debug: only run on one folder
-        if (folder[0] != "modern"):
-            continue
+        # if (folder[0] != "modern"):
+        #     continue
 
         currentLabel = Labels[folder[0]]
         for fileName in os.listdir(folder[1])[:10]:
