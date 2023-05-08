@@ -334,15 +334,25 @@ def getRawWav(filename):
 def processWav(rawWav):
     pass
 
+
+def wavToCNNInput(Wav_filepath):
+    audio, sample_rate = librosa.load(Wav_filepath)
+    spectrum = librosa.stft(audio)
+    out = np.abs(spectrum)
+    #First dimension should be frequency, second dimension is time
+    return out
+
 def getMusicFeatures(batchOfFileIndices, listOfFiles):
     listOfMusicFeatures = []
     for index in batchOfFileIndices:
         midiFileName = listOfFiles[int(index.item())]
-        rawWav = getRawWav(midiFileName) #can pass in midi file name or midi object here
-        processedWav = processWav(rawWav)
-        listOfMusicFeatures.append(processedWav)
+        #rawWav = getRawWav(midiFileName) #can pass in midi file name or midi object here
+        #processedWav = processWav(rawWav)
+        #listOfMusicFeatures.append(processedWav)
+        cnnin = wavToCNNInput(midiFileName)
 
-    return torch.tensor(listOfMusicFeatures)
+    #return torch.tensor(listOfMusicFeatures)
+    return torch.tensor(cnnin)
 
 
 def mlp_epoch(model, lossFunction, opt, loader, argv, isCNN, CNN_files, train=True, test=False):
