@@ -267,7 +267,7 @@ def loadMIDIs(directories):
             continue
 
         currentLabel = Labels[folder[0]]
-        for fileName in os.listdir(folder[1]):
+        for fileName in os.listdir(folder[1])[:10]:
             if fileName[0] == '.':  # skip any hidden files
                 continue
             currentFileDirectory = folder[1] + "/" + fileName
@@ -275,7 +275,7 @@ def loadMIDIs(directories):
             labelsToLoad.append(currentLabel)
 
     X, Y = getFeatures()
-    return X, Y, loadedIndices.copy(), loadedFiles.copy()
+    return X, Y
 
 
 def printDatasetMetrics(X, Y, title="Training Dataset"):
@@ -414,7 +414,12 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, CNN_files = None
         with no_grad():
             testAcc, testLoss = mlp_epoch(model, lossFunction, opt, testLoader, argv, isCNN, CNN_testFiles, train=False, test=True)
         print("Test acc: ", testAcc, " test loss: ", testLoss)
-    toPrint = str(argv.learning_rate) + ", hidden: "+ str(argv.hidden) + ", batch: " + str(argv.batchsize) + ", dropout: " + str(argv.dropout) + ", sgd: " + str(argv.sgd)
+
+    toPrint = ""
+    if isCNN:
+        toPrint = "CNN: "
+    toPrint += str(argv.learning_rate) + ", hidden: "+ str(argv.hidden) + ", batch: " + str(argv.batchsize) + ", dropout: " + str(argv.dropout) + ", sgd: " + str(argv.sgd)
+
     plt.title("Train acc " + toPrint)
     plt.plot([i for i in range(argv.epochs)], trainAccList)
     plt.xlabel("epoch")
@@ -442,31 +447,62 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, CNN_files = None
     # can evaluate on test set here
 
 
+def loadWAVs(directories):
+    CNN_temp_files = []
+    indices = []
+    Y = []
+    for folder in directories.items():
+        # Debug: only run on one folder
+        if (folder[0] != "modern"):
+            continue
+
+        currentLabel = Labels[folder[0]]
+        for fileName in os.listdir(folder[1]):
+            if fileName[0] == '.':  # skip any hidden files
+                continue
+            currentFileDirectory = folder[1] + "/" + fileName
+            CNN_temp_files.append(currentFileDirectory)
+            indices.append(len(indices))
+            Y.append(currentLabel)
+
+    return indices, Y, CNN_temp_files.copy()
+
+
 def main(argv, X=None, Y=None, X_filenames=None):
 
     if (X is None) or (Y is None):
-        trainDirectories = getClassDirectories("dataset", argv)
-        X, Y, CNN, CNN_files = loadMIDIs(trainDirectories)
+        trainDirectories = getClassDirectories(argv.datadir, argv)
+        X, Y = loadMIDIs(trainDirectories)
 
     if argv.testdir is None:
         X_test = None
         Y_test = None
-        CNN_test = None
     else:
         testDirectories = getClassDirectories(argv.testdir, argv)
-        X_test, Y_test, CNN_test, CNN_test_files = loadMIDIs(testDirectories)
+        X_test, Y_test = loadMIDIs(testDirectories)
         printDatasetMetrics(X_test, Y_test, "Test dataset")
 
     printDatasetMetrics(X, Y)
-    zipped_train, zipped_dev, Y_train, Y_dev = model_selection.train_test_split(list(zip(X, CNN)), Y,
+    X_train, X_dev, Y_train, Y_dev = model_selection.train_test_split(X, Y,
                                                                       test_size=0.25)  # can replace this by loading the test set instead
-    X_train = [i[0] for i in zipped_train]
-    X_dev = [i[0] for i in zipped_dev]
-    CNN_train = [i[1] for i in zipped_train]
-    CNN_dev = [i[1] for i in zipped_dev]
     doNaiveBayes(X_train, X_dev, X_test, Y_train, Y_dev, Y_test)
     doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv)
-    doMLP(CNN_train, CNN_dev, CNN_test, Y_train, Y_dev, Y_test, argv, CNN_files, CNN_test_files, True)
+
+    if argv.wavdatadir is not None:
+        wavTrainDirs = getClassDirectories(argv.wavdatadir, argv)
+        X, Y, CNN_files = loadWAVs(wavTrainDirs)
+        X_train, X_dev, Y_train, Y_dev = model_selection.train_test_split(X, Y,
+                                                                          test_size=0.25)
+        if argv.wavtestdir is None:
+            X_test = None
+            Y_test = None
+            CNN_test_files = None
+        else:
+            wavTrainDirs = getClassDirectories(argv.wavtestdir, argv)
+            X_test, Y_test, CNN_test_files = loadWAVs(wavTrainDirs)
+        doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, CNN_files, CNN_test_files, True)
+
+    #TODO make this include CNN
     if argv.testdir is not None:
         for i in range(len(Y_test)):
             print("For ", loadedFiles[i], " nb predicted: ", Numbers[nbPredictions[i]], ", mlp predicted: ", Numbers[mlpPredictions[0][i]])
@@ -502,6 +538,8 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--datadir", type=str, help="directory to folders of midi files", required=True)
     p.add_argument("--testdir", type=str, help="directory to folders of midi files", default=None)
+    p.add_argument("--wavdatadir", type=str, help="directory to folders of wav files", default=None)
+    p.add_argument("--wavtestdir", type=str, help="directory to folders of wav files", default=None)
     p.add_argument("--batchsize", type=int, default=100, help="batch size")
     p.add_argument("--epochs", type=int, default=700, help="epochs for mlp")
     p.add_argument("--hidden", type=int, default=300, help="size of hidden layer in mlp")
