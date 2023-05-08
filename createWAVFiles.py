@@ -1,22 +1,21 @@
 import argparse
 import os
-import music21
 
+timidityPath = '/usr/local/bin/timidity'
 
 def getClassDirectories(rootdir, argv):
     return {"romantic": rootdir + "/" + argv.romantic, "baroque": rootdir + "/" + argv.baroque,
         "classical": rootdir + "/" + argv.classical, "modern": rootdir + "/" + argv.modern}
 
-def createWavFromMidi(filePath: str):
+def createWavFromMidi(filename: str):
         try:
-            midiObject = music21.converter.parse(filePath)
+            wavFilePath = os.path.splitext(filename)[0] + ".wav"
+            command = timidityPath + ' {} -Ow -G0-1:00.000 -o {}'.format(filename, wavFilePath)
+            os.system(command)
         except:
-            print(filePath, "could not be parsed, skipping...")
+            print(filename, "could not be parsed, skipping...")
             return
 
-        wavFilePath = os.path.splitext(filePath)[0] + ".wav"
-        #TODO
-        #create wav from midi object here
 
 def createFiles(directories):
     for folder in directories.items():

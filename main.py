@@ -21,6 +21,7 @@ import librosa
 # get the vector from the processing function, and put the correct label
 # pass it to sci kit learn
 
+timidityPath = '/usr/local/bin/timidity'
 Labels = {"romantic": 0, "modern": 1, "classical": 2, "baroque": 3}
 Numbers = {0: "romantic", 1: "modern",2: "classical", 3:"baroque"}
 loadedData = []  # List of examples (vectors) for each era of music, each example is a dictionary {Label : feature vector}
@@ -36,7 +37,7 @@ cnnPredictions = []
 # Number of valid files that had errors when analyzing/extracting features (note: does not account for files that were unable to be parsed in the first place)
 badfilecount = 0
 numF = 0
-cnnNumberOfFeatures = 0 #TODO
+cnnNumberOfFeatures = (1,1) #TODO
 # List of all key signatures
 # ksList = []
 # for a in ["c", "d", "e", "f", "g", "a", "b"]:
@@ -323,8 +324,8 @@ def mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
 def getRawWav(filename):
     #get wav from object
     wavFilePath = os.path.splitext(filename)[0] + ".wav"
-    command = 'timidity {} -Ow -G0-1:00.000 -o {}'.format(filename, wavFilePath)
-    os.popen(command)
+    command = timidityPath + ' {} -Ow -G0-1:00.000 -o {}'.format(filename, wavFilePath)
+    os.system(command)
     #create librosa object from file
 
     #delete temporary file
@@ -336,7 +337,7 @@ def processWav(rawWav):
 def getMusicFeatures(batchOfFileIndices, listOfFiles):
     listOfMusicFeatures = []
     for index in batchOfFileIndices:
-        midiFileName = listOfFiles[index]
+        midiFileName = listOfFiles[int(index.item())]
         rawWav = getRawWav(midiFileName) #can pass in midi file name or midi object here
         processedWav = processWav(rawWav)
         listOfMusicFeatures.append(processedWav)

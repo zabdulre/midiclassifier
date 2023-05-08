@@ -1,6 +1,6 @@
 from torch import nn
 import torch.nn.functional as F
-
+from torch import flatten
 
 class MLPDoubleModel(nn.Module):
 
@@ -74,7 +74,7 @@ class CNNModel(nn.Module):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = self.pool(F.relu(self.conv3(x)))
-        x = torch.flatten(x, 1) # flatten all dimensions except batch
+        x = flatten(x, 1) # flatten all dimensions except batch
         x = F.relu(self.fc1(x))
         x = self.dropout(x)
         x = F.relu(self.fc2(x))
