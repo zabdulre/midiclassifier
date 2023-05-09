@@ -37,7 +37,7 @@ cnnPredictions = []
 # Number of valid files that had errors when analyzing/extracting features (note: does not account for files that were unable to be parsed in the first place)
 badfilecount = 0
 numF = 0
-cnnFTMatrixDimensions = (1,1) #TODO
+cnnFTMatrixDimensions = (1,1) #This value gets edited when obtaining FTMatrices
 # List of all key signatures
 # ksList = []
 # for a in ["c", "d", "e", "f", "g", "a", "b"]:
@@ -267,7 +267,7 @@ def loadMIDIs(directories):
         #     continue
 
         currentLabel = Labels[folder[0]]
-        for fileName in os.listdir(folder[1])[:10]:
+        for fileName in os.listdir(folder[1]):
             if fileName[0] == '.':  # skip any hidden files
                 continue
             currentFileDirectory = folder[1] + "/" + fileName
@@ -457,7 +457,7 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, isCNN=False):
     plt.ylabel("Dev loss")
     plt.show()
 
-    # can evaluate on test set here
+    #TODO: can evaluate on test set here
 
 
 def loadWAVs(directories):
@@ -469,7 +469,7 @@ def loadWAVs(directories):
         #    continue
 
         currentLabel = Labels[folder[0]]
-        for fileName in os.listdir(folder[1])[:8]:
+        for fileName in os.listdir(folder[1]):
             if fileName[0] == '.':  # skip any hidden files
                 continue
             currentFilePath = folder[1] + "/" + fileName
@@ -486,11 +486,12 @@ def main(argv, X=None, Y=None, X_filenames=None):
 
     if (X is None) or (Y is None):
         trainDirectories = getClassDirectories(argv.datadir, argv)
-        X, Y = loadMIDIs(trainDirectories)
+        X, Y = loadMIDIs(trainDirectories) #TODO: UNCOMMENT THIS LINE AFTER DONE TESTING WAV
 
     if argv.testdir is None:
         X_test = None
         Y_test = None
+    #TODO: UNCOMMENT LINES 495-504 AFTER DONE TESTING WAV
     else:
         testDirectories = getClassDirectories(argv.testdir, argv)
         X_test, Y_test = loadMIDIs(testDirectories)
