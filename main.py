@@ -2,7 +2,7 @@ import argparse
 import os
 import music21
 import torch
-from sklearn import model_selection, naive_bayes, metrics
+from sklearn import model_selection, naive_bayes, metrics, preprocessing
 from collections import Counter
 import matplotlib.pyplot as plt
 from joblib import dump, load
@@ -24,6 +24,15 @@ import librosa
 timidityPath = '/usr/local/bin/timidity'
 Labels = {"romantic": 0, "modern": 1, "classical": 2, "baroque": 3}
 Numbers = {0: "romantic", 1: "modern",2: "classical", 3:"baroque"}
+
+
+
+
+
+
+
+
+
 loadedData = []  # List of examples (vectors) for each era of music, each example is a dictionary {Label : feature vector}
 loadedLabels = []
 loadedFiles = [] #files in order of labels
@@ -34,6 +43,7 @@ filesToLoad = []
 nbPredictions = []
 mlpPredictions = []
 cnnPredictions = []
+CNNFiles = []
 # Number of valid files that had errors when analyzing/extracting features (note: does not account for files that were unable to be parsed in the first place)
 badfilecount = 0
 numF = 0
@@ -313,26 +323,44 @@ def mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
     devDataset = dataset.TensorDataset(tensor(X_dev,dtype=torch.float32), tensor(Y_dev,dtype=torch.float32))
     if (X_test is None) or (Y_test is None):
         return DataLoader(trainDataset, argv.batchsize, shuffle=True), DataLoader(devDataset, argv.batchsize,
-                                                                               shuffle=True), None
+                                                                               shuffle=False), None
     else:
         testDataset = dataset.TensorDataset(tensor(X_test, dtype=torch.float32), tensor(Y_test, dtype=torch.float32))
         return DataLoader(trainDataset, argv.batchsize, shuffle=True), DataLoader(devDataset, argv.batchsize,
-                                                                               shuffle=True), DataLoader(testDataset, len(loadedFiles), shuffle=False)
+                                                                               shuffle=True), DataLoader(testDataset, len(testDataset), shuffle=False)
 
 
 
 #For each wav file, get Short-Time Fourier Transform.
 #We then take the magnitude of the spectrum. Getting us a frequency x timestep matrix.
-def wavToCNNInput(Wav_filepath, max_time=512, max_freq=512, maxLength=50000):
+def wavToCNNInput(Wav_filepath, max_time=512, max_freq=512, maxLength=100000):
     audio, sample_rate = librosa.load(Wav_filepath)
+
+    iterations = len(audio) // maxLength
+    remainingSize = len(audio)
+    clips = []
+    for i in range(max(iterations,0)):
+        item = np.abs(librosa.stft(audio[i*maxLength:((i+1)*maxLength)], hop_length=500, n_fft=400))
+        item = preprocessing.StandardScaler().fit_transform(item)
+        clips.append(item)
+        remainingSize -= maxLength
+
+    if remainingSize > 0:
+        item = np.abs(librosa.stft(np.pad(audio[iterations*maxLength:], (maxLength-remainingSize), mode="constant")[:maxLength], hop_length=500, n_fft=400))
+        item = preprocessing.StandardScaler().fit_transform(item)
+        clips.append(item)
+    out = clips.copy()
+    '''
     if audio.shape[0] < maxLength:
-        audio = np.pad(audio, (maxLength - audio.shape[0]))
+        audio = np.pad(audio, (maxLength - audio.shape[0]), mode="constant")
         audio = audio[:maxLength]
     else:
         audio = audio[:maxLength]
-    spectrum = librosa.stft(audio, hop_length=32, win_length=320) #TODO make this much smaller
+    spectrum = librosa.stft(audio, hop_length=40000, n_fft=200) #TODO make this much smaller
     out = np.abs(spectrum)
+    out = preprocessing.StandardScaler().fit_transform(out)
     #2048, 1025 were og values
+    '''
     '''
     if out.shape[1] < max_time: #TODO make this much smaller
         out = np.pad(out, (0, max_time - out.shape[1]), constant_values=0.0)
@@ -355,7 +383,7 @@ def getMusicFTMat(batchOfFileIndices, listOfFiles):
     for index in tqdm(batchOfFileIndices):
         midiFileName = listOfFiles[int(index.item())]
         #rawWav = getRawWav(midiFileName) #can pass in midi file name or midi object here
-        listOfFTMatrices.append(wavToCNNInput(midiFileName))
+        listOfFTMatrices.extend(wavToCNNInput(midiFileName))
 
     #return torch.tensor(listOfMusicFeatures)
     return torch.tensor(listOfFTMatrices)
@@ -463,6 +491,7 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, isCNN=False):
 def loadWAVs(directories):
     X = []
     Y = []
+    CNNFiles.clear()
     for folder in directories.items():
         # Debug: only run on one folder
         #if (folder[0] != "modern"):
@@ -476,14 +505,16 @@ def loadWAVs(directories):
             print("Parsing " + currentFilePath)
             #CNN_temp_files.append(currentFileDirectory)
             #indices.append(len(indices))
-            X.append(wavToCNNInput(currentFilePath))
-            Y.append(currentLabel)
+            clips = wavToCNNInput(currentFilePath)
+            X.extend(clips)
+            [Y.append(currentLabel) for i in clips]
+            [CNNFiles.append(currentFilePath) for i in clips]
 
     return np.stack(X, 0) , Y
 
 
 def main(argv, X=None, Y=None, X_filenames=None):
-
+    '''
     if (X is None) or (Y is None):
         trainDirectories = getClassDirectories(argv.datadir, argv)
         X, Y = loadMIDIs(trainDirectories) #TODO: UNCOMMENT THIS LINE AFTER DONE TESTING WAV
@@ -503,6 +534,11 @@ def main(argv, X=None, Y=None, X_filenames=None):
     doNaiveBayes(X_train, X_dev, X_test, Y_train, Y_dev, Y_test)
     doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv)
 
+    if argv.testdir is not None:
+        for i in range(len(Y_test)):
+            print("For ", loadedFiles[i], " nb predicted: ", Numbers[nbPredictions[i]], ", mlp predicted: ",
+                  Numbers[mlpPredictions[0][i]])
+    '''
     if argv.wavdatadir is not None:
         wavTrainDirs = getClassDirectories(argv.wavdatadir, argv)
         X, Y = loadWAVs(wavTrainDirs)
@@ -514,12 +550,13 @@ def main(argv, X=None, Y=None, X_filenames=None):
         else:
             wavTrainDirs = getClassDirectories(argv.wavtestdir, argv)
             X_test, Y_test = loadWAVs(wavTrainDirs)
+        mlpPredictions.clear()
         doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, True)
 
     #TODO make this include CNN
-    if argv.testdir is not None:
+    if argv.wavtestdir is not None:
         for i in range(len(Y_test)):
-            print("For ", loadedFiles[i], " nb predicted: ", Numbers[nbPredictions[i]], ", mlp predicted: ", Numbers[mlpPredictions[0][i]])
+            print("For ", CNNFiles[i], " cnn predicted: ", Numbers[mlpPredictions[0][i]])
 
 '''
 def scripts(p):
