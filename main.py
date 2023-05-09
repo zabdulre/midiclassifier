@@ -488,6 +488,18 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, isCNN=False):
 
     #TODO: can evaluate on test set here
 
+def getSpecto(currentFilePath, currentLabel):
+    y, sr = librosa.load(currentFilePath)
+    #only get first 10 seconds
+    S = librosa.feature.melspectrogram(y=y[:10*24000], sr=sr, fmax=5000)
+    fig, ax = plt.subplots()
+    S_dB = librosa.power_to_db(S, ref=np.max)
+    img = librosa.display.specshow(S_dB, x_axis='time',
+                            y_axis='mel', sr=sr, fmax=5000, ax=ax)
+    fig.colorbar(img, ax=ax, format='%+2.0f dB')
+    ax.set(title='Mel-frequency spectrogram for first ten sec of file from '+Numbers[currentLabel])
+    plt.show()
+    getSpecto=False
 
 def loadWAVs(directories):
     X = []
@@ -497,6 +509,9 @@ def loadWAVs(directories):
         # Debug: only run on one folder
         #if (folder[0] != "modern"):
         #    continue
+
+        #Set this value to True if you want to generate spectograms
+        getSpectoFlag=True
 
         currentLabel = Labels[folder[0]]
         for fileName in os.listdir(folder[1]):
@@ -511,17 +526,23 @@ def loadWAVs(directories):
             [Y.append(currentLabel) for i in clips]
             [CNNFiles.append(currentFilePath) for i in clips]
 
+            #get spectogram of first file for each class
+            if getSpectoFlag:
+                getSpecto(currentFilePath, currentLabel)
+                getSpectoFlag=False
+                
     #DEBUG: Print FT Matrix Size and samples for each class.
-    # global flag
-    # global cnnFTMatrixDimensions
-    # if(flag==True):
-    #     print(np.shape(np.stack(X,0)))
-    #     cnnFTMatrixDimensions = np.shape(np.stack(X,0))[-2:]
-    #     flag=False
-    # counts = [0,0,0,0]
-    # for point in Y:
-    #     counts[point]+=1
-    # print(counts)
+    global flag
+    global cnnFTMatrixDimensions
+    if(flag==True):
+        print("CNN input size: ",np.shape(np.stack(X,0)))
+        cnnFTMatrixDimensions = np.shape(np.stack(X,0))[-2:]
+        flag=False
+    counts = [0,0,0,0]
+    for point in Y:
+        counts[point]+=1
+    print("Number of samples for each class: ",counts)
+
     return np.stack(X, 0) , Y
 
 
@@ -539,7 +560,7 @@ def main(argv, X=None, Y=None, X_filenames=None):
     for i in range(len(Y)):
         classval = Y[i]
         class_example_feature[classval].append(X[i])
-    
+    #Get mean, std dev, median
     x_mean = []
     x_stdev = []
     x_median = []
@@ -559,7 +580,6 @@ def main(argv, X=None, Y=None, X_filenames=None):
     if argv.testdir is None:
         X_test = None
         Y_test = None
-        
     else:
         testDirectories = getClassDirectories(argv.testdir, argv)
         X_test, Y_test = loadMIDIs(testDirectories)
