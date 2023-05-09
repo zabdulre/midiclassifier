@@ -48,6 +48,7 @@ CNNFiles = []
 badfilecount = 0
 numF = 0
 cnnFTMatrixDimensions = (1,1) #This value gets edited when obtaining FTMatrices
+flag=True
 # List of all key signatures
 # ksList = []
 # for a in ["c", "d", "e", "f", "g", "a", "b"]:
@@ -333,20 +334,20 @@ def mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
 
 #For each wav file, get Short-Time Fourier Transform.
 #We then take the magnitude of the spectrum. Getting us a frequency x timestep matrix.
-def wavToCNNInput(Wav_filepath, max_time=512, max_freq=512, maxLength=100000):
+def wavToCNNInput(Wav_filepath, max_time=512, max_freq=512, maxLength=5*24000): #24000 is seconds
     audio, sample_rate = librosa.load(Wav_filepath)
 
     iterations = len(audio) // maxLength
     remainingSize = len(audio)
     clips = []
     for i in range(max(iterations,0)):
-        item = np.abs(librosa.stft(audio[i*maxLength:((i+1)*maxLength)], hop_length=500, n_fft=400))
+        item = np.abs(librosa.stft(audio[i*maxLength:((i+1)*maxLength)], hop_length=600, n_fft=300))
         item = preprocessing.StandardScaler().fit_transform(item)
         clips.append(item)
         remainingSize -= maxLength
 
     if remainingSize > 0:
-        item = np.abs(librosa.stft(np.pad(audio[iterations*maxLength:], (maxLength-remainingSize), mode="constant")[:maxLength], hop_length=500, n_fft=400))
+        item = np.abs(librosa.stft(np.pad(audio[iterations*maxLength:], (maxLength-remainingSize), mode="constant")[:maxLength], hop_length=600, n_fft=300))
         item = preprocessing.StandardScaler().fit_transform(item)
         clips.append(item)
     out = clips.copy()
@@ -425,11 +426,11 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, isCNN=False):
         else:
             model = MLPTripleModel(len(Labels.keys()), numF, argv)
 
-    lossFunction = nn.CrossEntropyLoss()
+    lossFunction = nn.CrossEntropyLoss(weight=torch.tensor([0.333, .417, .290, .215])) #Change weights for each class, due to imbalance
     if argv.sgd:
         opt = optim.SGD(model.parameters(), argv.learning_rate)
     else:
-        opt = optim.Adam(model.parameters(), argv.learning_rate)
+        opt = optim.Adam(model.parameters(), argv.learning_rate, weight_decay=1e-4) #Add weight decay/regularization
 
     trainAccList = []
     trainLossList = []
@@ -510,19 +511,55 @@ def loadWAVs(directories):
             [Y.append(currentLabel) for i in clips]
             [CNNFiles.append(currentFilePath) for i in clips]
 
+    #DEBUG: Print FT Matrix Size and samples for each class.
+    # global flag
+    # global cnnFTMatrixDimensions
+    # if(flag==True):
+    #     print(np.shape(np.stack(X,0)))
+    #     cnnFTMatrixDimensions = np.shape(np.stack(X,0))[-2:]
+    #     flag=False
+    # counts = [0,0,0,0]
+    # for point in Y:
+    #     counts[point]+=1
+    # print(counts)
     return np.stack(X, 0) , Y
 
 
 def main(argv, X=None, Y=None, X_filenames=None):
-    '''
+    
     if (X is None) or (Y is None):
         trainDirectories = getClassDirectories(argv.datadir, argv)
-        X, Y = loadMIDIs(trainDirectories) #TODO: UNCOMMENT THIS LINE AFTER DONE TESTING WAV
+        X, Y = loadMIDIs(trainDirectories)
+
+    #Get distribution of each feature across the classes
+    class_example_feature = []
+    num_features = len(X[1])
+    for i in range(len(Labels)):
+        class_example_feature.append([])
+    for i in range(len(Y)):
+        classval = Y[i]
+        class_example_feature[classval].append(X[i])
+    
+    x_mean = []
+    x_stdev = []
+    x_median = []
+    for i in range(len(Labels)):
+        x_mean.append(np.mean(class_example_feature[i], axis=0))
+        x_stdev.append(np.std(class_example_feature[i], axis=0))
+        x_median.append(np.median(class_example_feature[i], axis=0))
+    for i in range(num_features):
+        print("Feature #",i)
+        for j in range(len(Labels)):
+            print("  ",Numbers.get(j),":")
+            print("    mean: ",x_mean[j][i])
+            print("    std_dev: ",x_stdev[j][i])
+            print("    median: ",x_median[j][i])
+        print("")
 
     if argv.testdir is None:
         X_test = None
         Y_test = None
-    #TODO: UNCOMMENT LINES 495-504 AFTER DONE TESTING WAV
+        
     else:
         testDirectories = getClassDirectories(argv.testdir, argv)
         X_test, Y_test = loadMIDIs(testDirectories)
@@ -538,7 +575,7 @@ def main(argv, X=None, Y=None, X_filenames=None):
         for i in range(len(Y_test)):
             print("For ", loadedFiles[i], " nb predicted: ", Numbers[nbPredictions[i]], ", mlp predicted: ",
                   Numbers[mlpPredictions[0][i]])
-    '''
+
     if argv.wavdatadir is not None:
         wavTrainDirs = getClassDirectories(argv.wavdatadir, argv)
         X, Y = loadWAVs(wavTrainDirs)
