@@ -14,7 +14,7 @@ from music21 import pitch
 from Model import MLPDoubleModel, MLPTripleModel, CNNModel
 from tqdm import tqdm
 import librosa
-
+from librosa import feature
 # read the files in to midi objects
 # send the object into a processing function
 # the processing function creates one vector per object
@@ -277,7 +277,7 @@ def loadMIDIs(directories):
         #     continue
 
         currentLabel = Labels[folder[0]]
-        for fileName in os.listdir(folder[1])[:10]:
+        for fileName in os.listdir(folder[1]):
             if fileName[0] == '.':  # skip any hidden files
                 continue
             currentFileDirectory = folder[1] + "/" + fileName
@@ -319,38 +319,48 @@ def doNaiveBayes(X_train, X_dev, X_test, Y_train, Y_dev, Y_test):
 
 
 def mlp_loaders(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv):
+    if argv.wavdatadir is not None:
+        batch = argv.cnnbatchsize
+    else:
+        batch = argv.batchsize
     trainDataset = dataset.TensorDataset(tensor(X_train,dtype=torch.float32), tensor(Y_train,dtype=torch.float32))
     devDataset = dataset.TensorDataset(tensor(X_dev,dtype=torch.float32), tensor(Y_dev,dtype=torch.float32))
     if (X_test is None) or (Y_test is None):
-        return DataLoader(trainDataset, argv.batchsize, shuffle=True), DataLoader(devDataset, argv.batchsize,
+        return DataLoader(trainDataset, batch, shuffle=True), DataLoader(devDataset, batch,
                                                                                shuffle=False), None
     else:
         testDataset = dataset.TensorDataset(tensor(X_test, dtype=torch.float32), tensor(Y_test, dtype=torch.float32))
-        return DataLoader(trainDataset, argv.batchsize, shuffle=True), DataLoader(devDataset, argv.batchsize,
+        return DataLoader(trainDataset, batch, shuffle=True), DataLoader(devDataset, batch,
                                                                                shuffle=True), DataLoader(testDataset, len(testDataset), shuffle=False)
 
 
 
 #For each wav file, get Short-Time Fourier Transform.
 #We then take the magnitude of the spectrum. Getting us a frequency x timestep matrix.
-def wavToCNNInput(Wav_filepath, max_time=512, max_freq=512, maxLength=100000):
+def wavToCNNInput(Wav_filepath, max_time=512, max_freq=512, maxLength=3*24000):
     audio, sample_rate = librosa.load(Wav_filepath)
 
     iterations = len(audio) // maxLength
     remainingSize = len(audio)
     clips = []
     for i in range(max(iterations,0)):
-        item = np.abs(librosa.stft(audio[i*maxLength:((i+1)*maxLength)], hop_length=500, n_fft=400))
+        item = feature.mfcc(y=audio[i*maxLength:((i+1)*maxLength)], sr=sample_rate, n_mfcc=40)
+        #item = librosa.stft(y=audio[i * maxLength:((i + 1) * maxLength)], n_fft=20)
+        #item = np.abs(item)
         item = preprocessing.StandardScaler().fit_transform(item)
         clips.append(item)
         remainingSize -= maxLength
 
     if remainingSize > 0:
-        item = np.abs(librosa.stft(np.pad(audio[iterations*maxLength:], (maxLength-remainingSize), mode="constant")[:maxLength], hop_length=500, n_fft=400))
+        item = feature.mfcc(y=np.pad(audio[iterations*maxLength:], (maxLength-remainingSize), mode="constant")[:maxLength], sr=sample_rate, n_mfcc=40)
+        #item = librosa.stft(
+        #y=np.pad(audio[iterations * maxLength:], (maxLength - remainingSize), mode="constant")[:maxLength], n_fft=20)
+        #item = np.abs(item)
         item = preprocessing.StandardScaler().fit_transform(item)
         clips.append(item)
     out = clips.copy()
     '''
+    , hop_length=500, n_fft=400
     if audio.shape[0] < maxLength:
         audio = np.pad(audio, (maxLength - audio.shape[0]), mode="constant")
         audio = audio[:maxLength]
@@ -435,7 +445,12 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, isCNN=False):
     trainLossList = []
     devAccList = []
     devLossList = []
-    for i in tqdm(range(argv.epochs)):
+
+    if isCNN:
+        epochsnum = argv.cnnepochs
+    else:
+        epochsnum = argv.epochs
+    for i in tqdm(range(epochsnum)):
         model.train()
         trainAcc, trainLoss = mlp_epoch(model, lossFunction, opt, trainLoader, argv)
         model.eval()
@@ -459,28 +474,28 @@ def doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, isCNN=False):
     toPrint = ""
     if isCNN:
         toPrint = "CNN: "
-    toPrint += str(argv.learning_rate) + ", hidden: "+ str(argv.hidden) + ", batch: " + str(argv.batchsize) + ", dropout: " + str(argv.dropout) + ", sgd: " + str(argv.sgd)
+    toPrint += str(argv.learning_rate)
 
     plt.title("Train acc " + toPrint)
-    plt.plot([i for i in range(argv.epochs)], trainAccList)
+    plt.plot([i for i in range(epochsnum)], trainAccList)
     plt.xlabel("epoch")
     plt.ylabel("Training accuracy")
     plt.show()
 
     plt.title("Train loss " + toPrint)
-    plt.plot([i for i in range(argv.epochs)], trainLossList)
+    plt.plot([i for i in range(epochsnum)], trainLossList)
     plt.xlabel("epoch")
     plt.ylabel("Training loss")
     plt.show()
 
     plt.title("Dev accuracy " + toPrint)
-    plt.plot([i for i in range(argv.epochs)], devAccList)
+    plt.plot([i for i in range(epochsnum)], devAccList)
     plt.xlabel("epoch")
     plt.ylabel("Dev accuracy")
     plt.show()
 
     plt.title("Dev loss  " + toPrint)
-    plt.plot([i for i in range(argv.epochs)], devLossList)
+    plt.plot([i for i in range(epochsnum)], devLossList)
     plt.xlabel("epoch")
     plt.ylabel("Dev loss")
     plt.show()
@@ -514,7 +529,6 @@ def loadWAVs(directories):
 
 
 def main(argv, X=None, Y=None, X_filenames=None):
-    '''
     if (X is None) or (Y is None):
         trainDirectories = getClassDirectories(argv.datadir, argv)
         X, Y = loadMIDIs(trainDirectories)
@@ -537,7 +551,7 @@ def main(argv, X=None, Y=None, X_filenames=None):
         for i in range(len(Y_test)):
             print("For ", loadedFiles[i], " nb predicted: ", Numbers[nbPredictions[i]], ", mlp predicted: ",
                   Numbers[mlpPredictions[0][i]])
-    '''
+
     if argv.wavdatadir is not None:
         wavTrainDirs = getClassDirectories(argv.wavdatadir, argv)
         X, Y = loadWAVs(wavTrainDirs)
@@ -553,21 +567,21 @@ def main(argv, X=None, Y=None, X_filenames=None):
         doMLP(X_train, X_dev, X_test, Y_train, Y_dev, Y_test, argv, True)
 
     #TODO make this include CNN
-    if argv.wavtestdir is not None:
-        for i in range(len(Y_test)):
-            print("For ", CNNFiles[i], " cnn predicted: ", Numbers[mlpPredictions[0][i]])
+        if argv.wavtestdir is not None:
+            for i in range(len(Y_test)):
+                print("For ", CNNFiles[i], " cnn predicted: ", Numbers[mlpPredictions[0][i]])
 
-'''
+
 def scripts(p):
-
-    script1 = "--datadir dataset --batchsize 10 --hidden 200 --learning_rate 0.0055 --epochs 100 --dropout 0.03 --sgd".split()
-    script2 = "--datadir dataset --batchsize 1 --hidden 200 --learning_rate 0.015 --epochs 100 --dropout 0.03".split()
-    script3="--datadir dataset --batchsize 10 --hidden 200 --learning_rate 0.0055 --epochs 100 --dropout 0.0".split()
-    script4="--datadir dataset --batchsize 50 --hidden 300 --learning_rate 0.0035 --epochs 300 --dropout 0.03 ".split()
-    script5="--datadir dataset --batchsize 50 --hidden 300 --learning_rate 0.0035 --epochs 300 --dropout 0.03".split()
-    script6="--datadir dataset --batchsize 100 --hidden 300 --learning_rate 0.0025 --epochs 700 --dropout 0.03 --testdir testset".split()
+    script1 = "--datadir midi/dataset --batchsize 10 --hidden 200 --learning_rate 0.0055 --epochs 100 --dropout 0.03 --sgd".split()
+    script2 = "--datadir midi/dataset --batchsize 1 --hidden 200 --learning_rate 0.015 --epochs 100 --dropout 0.03".split()
+    script3="--datadir midi/dataset --batchsize 10 --hidden 200 --learning_rate 0.0055 --epochs 100 --dropout 0.0".split()
+    script4="--datadir midi/dataset --batchsize 50 --hidden 300 --learning_rate 0.0035 --epochs 300 --dropout 0.03 ".split()
+    script5="--datadir midi/dataset --batchsize 50 --hidden 300 --learning_rate 0.0035 --epochs 300 --dropout 0.03".split()
+    script6="--datadir midi/dataset --batchsize 100 --hidden 300 --learning_rate 0.0025 --epochs 700 --dropout 0.03 --testdir midi/testset".split()
+    script7="--datadir midi/dataset --wavdatadir wav/dataset --wavtestdir wav/testset --batchsize 100 --cnnepochs 100 --cnnbatchsize 1000 --hidden 300 --learning_rate 0.002 --epochs 700 --dropout 0.09 --testdir midi/testset".split()
     argv = p.parse_args(script1)
-    trainDirectories = getClassDirectories("dataset", argv)
+    trainDirectories = getClassDirectories("midi/dataset", argv)
     X, Y = loadMIDIs(trainDirectories)
     print("--------Script1--------------")
     main(p.parse_args(script1), X, Y)
@@ -581,8 +595,10 @@ def scripts(p):
     main(p.parse_args(script5), X, Y)
     print("--------Script6--------------")
     main(p.parse_args(script6), X, Y)
+    print("--------Script7--------------")
+    main(p.parse_args(script7), X, Y)
     return
-'''
+
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
@@ -591,6 +607,8 @@ if __name__ == "__main__":
     p.add_argument("--wavdatadir", type=str, help="directory to folders of wav files", default=None)
     p.add_argument("--wavtestdir", type=str, help="directory to folders of wav files", default=None)
     p.add_argument("--batchsize", type=int, default=100, help="batch size")
+    p.add_argument("--cnnepochs",  type=int, default=100, help="cnn epochs")
+    p.add_argument("--cnnbatchsize",  type=int, default=100, help="cnn batch size")
     p.add_argument("--epochs", type=int, default=5, help="epochs for mlp")
     p.add_argument("--hidden", type=int, default=300, help="size of hidden layer in mlp")
     p.add_argument("--learning_rate", type=float, default=0.0025, help="learning rate")
@@ -602,7 +620,11 @@ if __name__ == "__main__":
     p.add_argument("--classical", default="classical", type=str, help="name of folder of classical era midi files")
     p.add_argument("--modern", default="modern", type=str, help="name of folder of modern/contemporary era midi files")
     #comment these two lines out to run scripts (Don't have to reload train data each time)
-    arg = p.parse_args()
-    main(arg)
-    #scripts(p)
+    #arg = p.parse_args()
+    #main(arg)
+    scripts(p)
 
+#60% test accuracy with 3 second interval and n_mcc = 40 and 2 convolutional layers, with 8 and 16 output channels respectively
+#62.8% test accuracy with 3 second interval and n_mcc = 40 and 2 convolutional layers with (16,32) and (32, 3) and mcc
+#large stft model test accuracy 0.3454 with test loss 1.282
+#3 kernel got 64.3%
