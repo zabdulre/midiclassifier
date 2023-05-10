@@ -85,6 +85,7 @@ class CNNModel(nn.Module):
         x = self.pool2(self.relu2(self.conv2(x)))
         #x = self.pool3(self.relu3(self.conv3(x)))
         x = self.flat(x) # flatten all dimensions except batch
+        # print(x.size()) #DEBUG (PRINT SIZE)
         x = self.fc1(x)
         #x = F.relu(self.fc1(x))
         #x = self.dropout(x)
