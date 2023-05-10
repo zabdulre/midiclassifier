@@ -1,0 +1,17 @@
+#CNN example script (the wavdatadir argument is required for CNNs):
+--datadir midi/dataset --wavdatadir wav/dataset --wavtestdir wav/testset --batchsize 100 --cnnepochs 100 --cnnbatchsize 1000 --hidden 300 --learning_rate 0.002 --epochs 700 --dropout 0.09 --testdir midi/testset
+
+
+#Neural network only scripts:
+
+--datadir dataset --batchsize 10 --hidden 200 --learning_rate 0.0055 --epochs 100 --dropout 0.03 --sgd
+
+--datadir dataset --batchsize 1 --hidden 200 --learning_rate 0.015 --epochs 100 --dropout 0.03 
+
+--datadir dataset --batchsize 10 --hidden 200 --learning_rate 0.0055 --epochs 100 --dropout 0.03 
+
+--datadir dataset --batchsize 50 --hidden 300 --learning_rate 0.0035 --epochs 300 --dropout 0.03 
+
+--datadir dataset --batchsize 50 --hidden 300 --learning_rate 0.0035 --epochs 300 --dropout 0.03 
+
+--datadir dataset --batchsize 100 --hidden 300 --learning_rate 0.0025 --epochs 700 --dropout 0.03 --testdir testset
